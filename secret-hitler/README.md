@@ -22,11 +22,14 @@ for making sure only the right person ever sees the hidden information.
 | `src/components/NominationScreen.jsx` | The President picks, in the open |
 | `src/components/VotingScreen.jsx` | The secret ballot, one player at a time |
 | `src/components/VoteResults.jsx` | The simultaneous reveal |
+| `src/components/PolicyCard.jsx` | One policy card, face up |
+| `src/components/LegislativePresident.jsx` | Draw three, bin one |
+| `src/components/LegislativeChancellor.jsx` | Two in, one enacted |
+| `src/components/VetoScreen.jsx` | The veto exchange |
 | `src/App.jsx` | Phase router |
 | `tailwind.config.js` | 1930s palette and type scale |
 
-Not built yet: the legislative, executive-action and game-over screens, and
-persistence. The reducer is complete enough to drive all of them.
+Not built yet: the executive-action and game-over screens, and persistence. The reducer is complete enough to drive all of them.
 
 ## Player counts
 
@@ -52,6 +55,10 @@ NOMINATION ──NOMINATE_CHANCELLOR──▶ VOTING ──CAST_VOTE ×N──�
   │◀──────────────────────────────────────┘                       │
   │                                                        elected │
   │                                            LEGISLATIVE_PRESIDENT ◀┘
+  │                                                    │ DISCARD_POLICY
+  │                                                    ▼
+  │                             LEGISLATIVE_CHANCELLOR ⇄ VETO_PRESIDENT_CONSIDER
+  │                                       │ ENACT_POLICY   (reject returns the hand)
   │                                                                              │ PRESIDENT_DISCARD
   │                                                                              ▼
   │                                                                    LEGISLATIVE_CHANCELLOR
@@ -74,6 +81,36 @@ actions.nominateChancellor(playerId);  // { type: 'NOMINATE_CHANCELLOR', payload
 actions.castVote(VOTES.JA);            // { type: 'CAST_VOTE', payload: { vote } }
 actions.resolveElection();             // { type: 'RESOLVE_ELECTION' }
 ```
+
+## The legislative session
+
+One ephemeral array, `legislative.cards`, carries the hand from the deck to the
+board. Entries are `{ id, party }`; the id is unique within the hand and is what
+the UI dispatches back, so nothing depends on array position and a policy can
+never sit in two lists at once. The array empties in the same step that puts a
+card on a track.
+
+The hand is dealt when the election resolves. `drawPolicies` reshuffles the
+discard pile back in whenever the deck holds fewer than three, so the President
+is always dealt a full hand and the reshuffle is announced in the public log.
+
+Veto is its own phase, `VETO_PRESIDENT_CONSIDER`, not a flag on the session:
+
+- **Consent** discards both policies, advances the election tracker, and rotates
+  to the next President. Reaching three failures fires a chaos policy off the
+  top of the deck **with no power granted** — the same path a rejected
+  government takes.
+- **Rejection** returns the hand untouched and sets `legislative.vetoRejected`,
+  which locks the button for the rest of the session; a second `REQUEST_VETO` is
+  a no-op in the reducer, not just a disabled button in the UI.
+
+The Hitler-as-Chancellor loss is checked **only** when an election resolves.
+Enacting a third fascist policy during his term does not end the game — verified
+in both directions.
+
+Both legislative screens are select-then-confirm rather than single-tap. The
+choice is irreversible, invisible to the table, and often decides the game, so a
+mis-tap while the phone is changing hands is not worth the saved tap.
 
 ## The ballot loop
 
@@ -185,13 +222,19 @@ the living in seat order, `ballotIndex` walks 0..4 over the alive list, the dead
 record no vote, and a vote dispatched after the loop closes is ignored. Majority
 boundaries checked at 5 and 6 alive, including the exact tie.
 
+**Legislative + veto** — 44 checks: the reshuffle guard with a two-card deck,
+card conservation through discard and enactment, stale and duplicate policy ids
+rejected, both veto branches, a veto that trips chaos granting no power, and the
+Hitler-Chancellor check firing on election but not on legislation.
+
 **UI** — driven through jsdom end to end: setup validation at four and twenty,
 add/rename/remove/toggle, the seven role reveals, the HUD (slot counts, power
 labels on fascist 3/4/5 and communist 1/2/3, tracker, deck counters, President
 and Prev Pres / Prev Chan badges), nomination eligibility matching
-`eligibleChancellors` exactly, six ballots, and the reveal grid. At every
-handoff the overlay is full-screen and opaque and its subtree names only the
-recipient — the payload enters the DOM only after the hold completes.
+`eligibleChancellors` exactly, six ballots, the reveal grid, and the full
+legislative session including both veto answers. At every handoff the overlay is
+full-screen and opaque and its subtree names only the recipient — the payload
+enters the DOM only after the hold completes.
 
 ## Wiring it up
 

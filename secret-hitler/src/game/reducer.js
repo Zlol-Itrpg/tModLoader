@@ -42,8 +42,8 @@ export const ACTIONS = {
   NOMINATE_CHANCELLOR: 'NOMINATE_CHANCELLOR',
   CAST_VOTE: 'CAST_VOTE',
   RESOLVE_ELECTION: 'RESOLVE_ELECTION',
-  PRESIDENT_DISCARD: 'PRESIDENT_DISCARD',
-  CHANCELLOR_ENACT: 'CHANCELLOR_ENACT',
+  DISCARD_POLICY: 'DISCARD_POLICY',
+  ENACT_POLICY: 'ENACT_POLICY',
   REQUEST_VETO: 'REQUEST_VETO',
   ANSWER_VETO: 'ANSWER_VETO',
   RESOLVE_POWER: 'RESOLVE_POWER',
@@ -70,8 +70,8 @@ export const actions = {
   }),
   castVote: (vote) => ({ type: ACTIONS.CAST_VOTE, payload: { vote } }),
   resolveElection: () => ({ type: ACTIONS.RESOLVE_ELECTION }),
-  presidentDiscard: (index) => ({ type: ACTIONS.PRESIDENT_DISCARD, payload: { index } }),
-  chancellorEnact: (index) => ({ type: ACTIONS.CHANCELLOR_ENACT, payload: { index } }),
+  discardPolicy: (policyId) => ({ type: ACTIONS.DISCARD_POLICY, payload: { policyId } }),
+  enactPolicy: (policyId) => ({ type: ACTIONS.ENACT_POLICY, payload: { policyId } }),
   requestVeto: () => ({ type: ACTIONS.REQUEST_VETO }),
   answerVeto: (accepted) => ({ type: ACTIONS.ANSWER_VETO, payload: { accepted } }),
   resolvePower: (targetId = null) => ({ type: ACTIONS.RESOLVE_POWER, payload: { targetId } }),
@@ -81,6 +81,14 @@ export const actions = {
 /* -------------------------------------------------------------------------- */
 /* Small pure helpers                                                          */
 /* -------------------------------------------------------------------------- */
+
+/** The hand between legislative sessions: empty, with no veto in flight. */
+const EMPTY_HAND = Object.freeze({
+  cards: [],
+  discarded: null,
+  vetoRequested: false,
+  vetoRejected: false,
+});
 
 const getPlayer = (state, playerId) =>
   state.players.find((player) => player.id === playerId) ?? null;
@@ -192,7 +200,7 @@ function beginNomination(state, override = null) {
       },
       government: { presidentId: president.id, chancellorId: null, nomineeId: null },
       election: { ...state.election, votes: {}, ballotIndex: 0, result: null },
-      legislative: { drawn: [], chancellorHand: [], discarded: null, vetoRequested: false },
+      legislative: { ...EMPTY_HAND },
       pendingPower: null,
       handoff: null,
     },
@@ -323,10 +331,22 @@ function resolveElection(state) {
     election: { ...state.election, tracker: 0 },
   };
 
-  const { drawn, deck, discard } = drawPolicies(elected.deck, elected.discard, 3);
+  // drawPolicies reshuffles the discard pile back in when the deck is short,
+  // so the President is always dealt a full hand of three.
+  const { drawn, deck, discard, reshuffled } = drawPolicies(elected.deck, elected.discard, 3);
   const dealt = log(
-    { ...elected, deck, discard, legislative: { ...elected.legislative, drawn } },
-    `${nameOf(elected, elected.government.presidentId)} draws three policies.`,
+    {
+      ...elected,
+      deck,
+      discard,
+      legislative: {
+        ...EMPTY_HAND,
+        cards: drawn.map((party, index) => ({ id: `policy-${index}`, party })),
+      },
+    },
+    `${nameOf(elected, elected.government.presidentId)} draws three policies${
+      reshuffled ? ' (the discard pile was reshuffled back in)' : ''
+    }.`,
   );
 
   return handOffTo(dealt, HANDOFF.PRESIDENT_LEGISLATIVE, dealt.government.presidentId);
@@ -603,23 +623,23 @@ export function gameReducer(state, action) {
 
     /* ---- Legislative session ------------------------------------------- */
 
-    case ACTIONS.PRESIDENT_DISCARD: {
+    case ACTIONS.DISCARD_POLICY: {
       if (state.phase !== PHASES.LEGISLATIVE_PRESIDENT || !state.handoff?.revealed) return state;
 
-      const { drawn } = state.legislative;
-      const discarded = drawn[payload.index];
-      if (!discarded) return state;
+      const { cards } = state.legislative;
+      const binned = cards.find((card) => card.id === payload.policyId);
+      if (!binned || cards.length !== 3) return state;
 
       const passed = log(
         {
           ...state,
           phase: PHASES.LEGISLATIVE_CHANCELLOR,
-          discard: [...state.discard, discarded],
+          discard: [...state.discard, binned.party],
           legislative: {
             ...state.legislative,
-            drawn: [],
-            discarded,
-            chancellorHand: drawn.filter((_, index) => index !== payload.index),
+            // The same array carries on to the Chancellor, one card lighter.
+            cards: cards.filter((card) => card.id !== binned.id),
+            discarded: binned.party,
           },
         },
         `${nameOf(state, state.government.presidentId)} passes two policies to ${nameOf(state, state.government.chancellorId)}.`,
@@ -628,40 +648,55 @@ export function gameReducer(state, action) {
       return handOffTo(passed, HANDOFF.CHANCELLOR_LEGISLATIVE, passed.government.chancellorId);
     }
 
-    case ACTIONS.CHANCELLOR_ENACT: {
+    case ACTIONS.ENACT_POLICY: {
       if (state.phase !== PHASES.LEGISLATIVE_CHANCELLOR || !state.handoff?.revealed) return state;
 
-      const { chancellorHand } = state.legislative;
-      const enacted = chancellorHand[payload.index];
-      if (!enacted) return state;
+      const { cards } = state.legislative;
+      const chosen = cards.find((card) => card.id === payload.policyId);
+      if (!chosen || cards.length !== 2) return state;
 
       const spent = {
         ...state,
-        discard: [...state.discard, ...chancellorHand.filter((_, i) => i !== payload.index)],
-        legislative: { drawn: [], chancellorHand: [], discarded: null, vetoRequested: false },
+        // The card not enacted is binned; the hand empties in the same step, so
+        // no policy exists in two places at once.
+        discard: [
+          ...state.discard,
+          ...cards.filter((card) => card.id !== chosen.id).map((card) => card.party),
+        ],
+        legislative: { ...EMPTY_HAND },
         handoff: null,
       };
 
-      return enactPolicy(spent, enacted);
+      return enactPolicy(spent, chosen.party);
     }
 
     case ACTIONS.REQUEST_VETO: {
-      if (state.phase !== PHASES.LEGISLATIVE_CHANCELLOR || !isVetoUnlocked(state)) return state;
+      if (state.phase !== PHASES.LEGISLATIVE_CHANCELLOR) return state;
+      if (!isVetoUnlocked(state) || state.legislative.vetoRejected) return state;
+
       const requested = log(
-        { ...state, legislative: { ...state.legislative, vetoRequested: true } },
+        {
+          ...state,
+          phase: PHASES.VETO_PRESIDENT_CONSIDER,
+          legislative: { ...state.legislative, vetoRequested: true },
+        },
         `${nameOf(state, state.government.chancellorId)} moves to veto this agenda.`,
       );
-      return handOffTo(requested, HANDOFF.PRESIDENT_LEGISLATIVE, requested.government.presidentId, {
-        vetoVote: true,
-      });
+      return handOffTo(requested, HANDOFF.VETO_CONSIDER, requested.government.presidentId);
     }
 
     case ACTIONS.ANSWER_VETO: {
-      if (!state.legislative.vetoRequested) return state;
+      if (state.phase !== PHASES.VETO_PRESIDENT_CONSIDER || !state.handoff?.revealed) return state;
 
       if (!payload.accepted) {
+        // The hand goes back untouched; the Chancellor must now enact, and the
+        // veto button stays locked for the rest of this session.
         const refused = log(
-          { ...state, legislative: { ...state.legislative, vetoRequested: false } },
+          {
+            ...state,
+            phase: PHASES.LEGISLATIVE_CHANCELLOR,
+            legislative: { ...state.legislative, vetoRequested: false, vetoRejected: true },
+          },
           `${nameOf(state, state.government.presidentId)} refuses the veto — a policy must be enacted.`,
         );
         return handOffTo(refused, HANDOFF.CHANCELLOR_LEGISLATIVE, refused.government.chancellorId);
@@ -670,12 +705,14 @@ export function gameReducer(state, action) {
       const vetoed = log(
         {
           ...state,
-          discard: [...state.discard, ...state.legislative.chancellorHand],
-          legislative: { drawn: [], chancellorHand: [], discarded: null, vetoRequested: false },
+          discard: [...state.discard, ...state.legislative.cards.map((card) => card.party)],
+          legislative: { ...EMPTY_HAND },
           handoff: null,
         },
         'The veto carries. The agenda is discarded.',
       );
+      // A successful veto is a failed government: the tracker advances, and
+      // reaching three triggers a chaos policy with no power attached.
       return failElection(vetoed, 'The government vetoed its own agenda.');
     }
 

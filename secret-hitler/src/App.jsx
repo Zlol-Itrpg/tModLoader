@@ -5,9 +5,19 @@ import GameHUD from './components/GameHUD.jsx';
 import NominationScreen from './components/NominationScreen.jsx';
 import VotingScreen from './components/VotingScreen.jsx';
 import VoteResults from './components/VoteResults.jsx';
+import LegislativePresident from './components/LegislativePresident.jsx';
+import LegislativeChancellor from './components/LegislativeChancellor.jsx';
+import VetoScreen from './components/VetoScreen.jsx';
 import { PHASES } from './game/constants.js';
 
-const BUILT = new Set([PHASES.NOMINATION, PHASES.VOTING, PHASES.VOTE_REVEAL]);
+const BUILT = new Set([
+  PHASES.NOMINATION,
+  PHASES.VOTING,
+  PHASES.VOTE_REVEAL,
+  PHASES.LEGISLATIVE_PRESIDENT,
+  PHASES.LEGISLATIVE_CHANCELLOR,
+  PHASES.VETO_PRESIDENT_CONSIDER,
+]);
 
 /** Placeholder for the phases whose screens are still to come. */
 function PhaseStub() {
@@ -43,6 +53,9 @@ function Game() {
       </div>
       <RoleReveal />
       <VotingScreen />
+      <LegislativePresident />
+      <LegislativeChancellor />
+      <VetoScreen />
     </>
   );
 }

@@ -99,12 +99,22 @@ export function createInitialState(options = {}) {
       tracker: 0,
     },
 
-    /** The three-card hand as it moves President -> Chancellor. */
+    /**
+     * The hand in flight, and nothing else.
+     *
+     * One ephemeral array carries the policies from the deck through the
+     * President's discard to the Chancellor's enactment, so a card can never be
+     * duplicated into a second list or dropped between handoffs. Each entry is
+     * `{ id, party }`; the id is unique within the hand and is what the UI
+     * dispatches back, so nothing depends on array position.
+     */
     legislative: {
-      drawn: [],
-      chancellorHand: [],
+      cards: [],
+      /** What the President binned, kept for the public log. */
       discarded: null,
       vetoRequested: false,
+      /** Set when the President refuses; locks the Chancellor's veto button. */
+      vetoRejected: false,
     },
 
     /** Set when a board slot fires a power; cleared when the President resolves it. */
