@@ -22,7 +22,9 @@ export default function AudioToggle() {
         toggleMuted();
         haptics.light();
       }}
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-sm border border-ink/20
+      // 48px of target, per Android's guidance. The glyph stays small so the
+      // control remains as quiet as it was.
+      className="grid h-12 w-12 shrink-0 place-items-center rounded-sm border border-ink/20
                  text-ink/45 transition-transform active:translate-y-[1px] active:bg-ink/10"
     >
       {/* Monochrome glyphs, to match the board's power icons. */}

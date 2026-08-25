@@ -33,8 +33,9 @@ export default function AbandonGameButton() {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="shrink-0 rounded-sm border border-ink/20 px-2.5 py-1.5 font-stencil
-                   text-[0.5625rem] uppercase tracking-[0.16em] text-ink/45
+        // 48px tall to match the mute switch; the label stays small.
+        className="grid h-12 shrink-0 place-items-center rounded-sm border border-ink/20 px-3
+                   font-stencil text-[0.5625rem] uppercase tracking-[0.16em] text-ink/45
                    active:bg-ink/10 active:text-ink"
       >
         End game

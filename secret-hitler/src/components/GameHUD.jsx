@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useGameState } from '../game/GameContext.jsx';
 import AbandonGameButton from './AbandonGameButton.jsx';
 import AudioToggle from './AudioToggle.jsx';
+import { useReducedMotion } from '../hooks/useReducedMotion.js';
 import { BOARDS, CHAOS_AT, getBoardPowers } from '../game/config.js';
 import { PARTIES, POWERS, POWER_INFO } from '../game/constants.js';
 import { BOARD_ORDER } from '../game/initialState.js';
@@ -111,18 +112,20 @@ function Badge({ children, className = '' }) {
 function useSlammedTrack(boards) {
   const [slammed, setSlammed] = useState(null);
   const previous = useRef(boards);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     const before = previous.current;
     previous.current = boards;
 
     const moved = Object.keys(boards).find((party) => boards[party].enacted > before[party].enacted);
-    if (!moved) return undefined;
+    // Nothing to animate under reduced motion, so do not arm a timer either.
+    if (!moved || reducedMotion) return undefined;
 
     setSlammed(moved);
     const timer = setTimeout(() => setSlammed(null), 700);
     return () => clearTimeout(timer);
-  }, [boards]);
+  }, [boards, reducedMotion]);
 
   return slammed;
 }

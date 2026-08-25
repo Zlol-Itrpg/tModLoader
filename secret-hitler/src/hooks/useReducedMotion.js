@@ -27,11 +27,20 @@ export function useReducedMotion() {
     }
 
     const onChange = (event) => setReduced(event.matches);
-    // Safari below 14 only has the deprecated listener API.
-    query.addEventListener?.('change', onChange) ?? query.addListener?.(onChange);
-    return () => {
-      query.removeEventListener?.('change', onChange) ?? query.removeListener?.(onChange);
-    };
+
+    // `a?.() ?? b?.()` looks like a fallback but is not: addEventListener
+    // returns undefined, so the right-hand side runs too and the handler ends
+    // up registered twice on every browser that has both APIs.
+    if (typeof query.addEventListener === 'function') {
+      query.addEventListener('change', onChange);
+      return () => query.removeEventListener('change', onChange);
+    }
+    // Safari below 14 only has the deprecated API.
+    if (typeof query.addListener === 'function') {
+      query.addListener(onChange);
+      return () => query.removeListener(onChange);
+    }
+    return undefined;
   }, []);
 
   return reduced;

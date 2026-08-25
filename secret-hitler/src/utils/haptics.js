@@ -15,18 +15,56 @@ export const PATTERNS = {
   pattern: [40, 60, 40],
 };
 
+/**
+ * Two cues can land in the same commit — a policy is enacted and the handoff
+ * that follows is revealed — and `navigator.vibrate` *replaces* whatever is
+ * playing rather than queueing it. Back-to-back calls therefore truncate each
+ * other into a stutter that reads as a rattle rather than two events.
+ *
+ * Inside this window only the stronger pulse survives, so the important one is
+ * the one you feel.
+ */
+const COALESCE_MS = 120;
+
+const weigh = (pattern) =>
+  Array.isArray(pattern) ? pattern.reduce((total, ms) => total + ms, 0) : pattern;
+
+let lastAt = -Infinity;
+let lastWeight = 0;
+
 function supported() {
   return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
 }
 
+const now = () =>
+  (typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now());
+
 function fire(pattern) {
   if (!supported()) return false;
+
+  const at = now();
+  const weight = weigh(pattern);
+  if (at - lastAt < COALESCE_MS && weight <= lastWeight) return false;
+
   try {
-    return navigator.vibrate(pattern) === true;
+    const fired = navigator.vibrate(pattern) === true;
+    if (fired) {
+      lastAt = at;
+      lastWeight = weight;
+    }
+    return fired;
   } catch {
     // Some engines throw when called from a non-gesture context.
     return false;
   }
+}
+
+/** Test seam: forget the coalescing window. */
+export function resetHaptics() {
+  lastAt = -Infinity;
+  lastWeight = 0;
 }
 
 /** Button taps, card selections. */

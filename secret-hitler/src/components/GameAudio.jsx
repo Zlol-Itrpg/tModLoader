@@ -8,6 +8,7 @@ import {
   playStampThud,
 } from '../utils/audio.js';
 import haptics from '../utils/haptics.js';
+import { HANDOFF } from '../game/constants.js';
 
 /**
  * Sound and vibration, driven from state rather than from click handlers.
@@ -56,7 +57,7 @@ export default function GameAudio() {
     if (state.handoff?.revealed && !before.handoff?.revealed) {
       playPaperShuffle();
       // A role reveal is the tense one; the rest are just paper.
-      if (state.handoff.kind === 'ROLE_REVEAL') playHeartbeat(2);
+      if (state.handoff.kind === HANDOFF.ROLE_REVEAL) playHeartbeat(2);
     }
 
     // The reckoning.

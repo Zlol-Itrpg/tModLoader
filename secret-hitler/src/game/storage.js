@@ -65,6 +65,22 @@ export function clearSave() {
 }
 
 /**
+ * Re-cover anything that was uncovered when the save was written.
+ *
+ * `handoff.revealed` is the only field in the store that means "hidden
+ * information is currently on screen". Restoring it as `true` would put a
+ * secret role, a policy hand, or an investigation result straight onto the
+ * screen at load — no confirmation tap, and no way to know whose hands the
+ * device is in after however long the tab was closed. The cost of re-covering
+ * is one tap by whoever already holds the phone; the cost of not doing it is
+ * the game.
+ */
+function sanitise(state) {
+  if (!state.handoff || !state.handoff.revealed) return state;
+  return { ...state, handoff: { ...state.handoff, revealed: false } };
+}
+
+/**
  * @returns {object|null} the saved state, or null if there was nothing usable.
  *   Anything unusable is deleted on the way out, so a bad save is only ever
  *   read once.
@@ -99,7 +115,7 @@ export function loadSave() {
     }
     if (!Object.values(PHASES).includes(state.phase)) throw new Error('save has an unknown phase');
 
-    return state;
+    return sanitise(state);
   } catch {
     clearSave();
     return null;

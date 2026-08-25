@@ -284,6 +284,31 @@ new table can silence the game before the first reveal.
 Everything above is a no-op without `AudioContext` or `navigator.vibrate`, which
 is what keeps the headless suites green.
 
+Two details that are easy to get wrong:
+
+- **Voices tear themselves out of the graph.** Every effect builds a gain node
+  wired to the master bus; without a `onended` release they accumulate, and 600
+  effects is a normal long game. They are disconnected when the source ends.
+- **The context parks itself.** A `running` AudioContext holds the output device
+  open. It suspends four seconds after the last voice finishes and resumes on
+  the next sound — which is inside a gesture, the only time a browser allows it.
+- **Haptic pulses coalesce.** `navigator.vibrate` *replaces* whatever is
+  playing, so two cues in one commit truncate each other into a rattle. Within
+  120 ms only the stronger pulse survives.
+
+## Hydration and hidden information
+
+`loadSave` re-covers the handoff: a save written while a secret was on screen
+comes back with `handoff.revealed` forced to `false`. Restoring it as `true`
+would put a role card or a policy hand straight onto the screen at load, with no
+confirmation tap and no way to know whose hands the device is in after however
+long the tab was closed. One tap by whoever holds the phone puts the game back
+exactly where it was.
+
+Animations are CSS, so nothing about them is in the state — there is no
+animation flag to get stuck on. A reload mid-flip restores the phase and replays
+the entry animation from its first frame.
+
 ## Reading the state
 
 ```jsx
@@ -467,8 +492,14 @@ shell, and a full deal-and-reveal plays through with the game saving to
 localStorage. Browser-initiated favicon fetches abort offline because they never
 enter a worker client; the same URLs return 200 when fetched through it.
 
-Suite totals: 600 fuzzed games, 24,480 role-reveals, and 594 assertions across
-thirteen files.
+**Audit** — 25 checks locking in the findings above: finished voices leave the
+graph, the context parks and wakes, weaker haptic pulses cannot truncate
+stronger ones, `useReducedMotion` registers exactly one listener and survives
+jsdom's missing `matchMedia`, and a save taken mid-reveal comes back covered and
+still legal to act on.
+
+Suite totals: 600 fuzzed games, 24,480 role-reveals, and 619 assertions across
+fourteen files.
 
 ## Wiring it up
 

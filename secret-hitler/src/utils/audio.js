@@ -20,6 +20,18 @@ let noise = null;
 let muted = readMuted();
 const listeners = new Set();
 
+/** When the last scheduled voice finishes, in context time. */
+let scheduledUntil = 0;
+/** Pending idle-suspend timer. */
+let idleTimer = null;
+
+/**
+ * How long after the last voice to park the context. An AudioContext in the
+ * `running` state holds the output device open, which on a phone keeps the
+ * audio hardware powered for a game that makes a noise every thirty seconds.
+ */
+const IDLE_SUSPEND_MS = 4000;
+
 /* -------------------------------------------------------------------------- */
 /* Plumbing                                                                    */
 /* -------------------------------------------------------------------------- */
@@ -32,6 +44,28 @@ function readMuted() {
   }
 }
 
+/** Park the context once everything scheduled has finished playing. */
+function scheduleIdleSuspend() {
+  if (typeof setTimeout !== 'function') return;
+  if (idleTimer !== null) clearTimeout(idleTimer);
+
+  // Wait out whatever is still sounding, then the idle margin. Clamped, and
+  // deliberately *not* re-armed by re-reading the clock when it fires: a
+  // context whose clock does not advance would otherwise loop forever. Any
+  // genuinely newer sound arms its own timer through this same function.
+  const remaining = context ? Math.max(0, scheduledUntil - context.currentTime) * 1000 : 0;
+  const delay = Math.min(remaining, 10000) + IDLE_SUSPEND_MS;
+
+  idleTimer = setTimeout(() => {
+    idleTimer = null;
+    if (context?.state === 'running') context.suspend?.().catch(() => {});
+  }, delay);
+
+  // Node only: an idle-audio timer must never be the reason a test run or a
+  // CLI process refuses to exit. A no-op in the browser.
+  idleTimer?.unref?.();
+}
+
 /**
  * Lazily build the context. Browsers refuse to start audio before a user
  * gesture, so this is called from inside handlers rather than at import time.
@@ -40,7 +74,8 @@ function readMuted() {
 function ctx() {
   if (muted) return null;
   if (context) {
-    // Autoplay policies suspend the context until a gesture; nudge it awake.
+    // Both the autoplay policy and our own idle suspend park the context; a
+    // call from inside a gesture is exactly when it is allowed to wake up.
     if (context.state === 'suspended') context.resume?.().catch(() => {});
     return context;
   }
@@ -71,14 +106,36 @@ function noiseBuffer(audio) {
 }
 
 /** Percussive envelope: near-instant attack, exponential tail. */
-function envelope(audio, { peak = 0.3, attack = 0.004, decay = 0.2, at = 0 }) {
+function envelope(audio, { peak = 0.3, attack = 0.004, decay = 0.2, at = 0, output = null }) {
   const gain = audio.createGain();
   const t = audio.currentTime + at;
   gain.gain.setValueAtTime(0.0001, t);
   gain.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), t + attack);
   gain.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
-  gain.connect(master);
-  return { gain, start: t, stop: t + attack + decay + 0.02 };
+  gain.connect(output ?? master);
+
+  const stop = t + attack + decay + 0.02;
+  scheduledUntil = Math.max(scheduledUntil, stop);
+  return { gain, start: t, stop };
+}
+
+/**
+ * Tear a finished voice out of the graph.
+ *
+ * Without this every effect leaves its gain node wired to the master bus
+ * forever. They are silent, but they are still nodes on a live graph, and a
+ * long game schedules them in the hundreds.
+ */
+function releaseOnEnd(source, ...nodes) {
+  source.onended = () => {
+    for (const node of [source, ...nodes]) {
+      try {
+        node.disconnect();
+      } catch {
+        // Already torn down.
+      }
+    }
+  };
 }
 
 function tone(audio, { type = 'sine', from, to, ...env }) {
@@ -88,6 +145,7 @@ function tone(audio, { type = 'sine', from, to, ...env }) {
   osc.frequency.setValueAtTime(from, start);
   if (to && to !== from) osc.frequency.exponentialRampToValueAtTime(to, stop);
   osc.connect(gain);
+  releaseOnEnd(osc, gain);
   osc.start(start);
   osc.stop(stop);
   return osc;
@@ -103,6 +161,7 @@ function hiss(audio, { filter = 'highpass', frequency = 2000, q = 0.7, ...env })
   band.frequency.value = frequency;
   band.Q.value = q;
   source.connect(band).connect(gain);
+  releaseOnEnd(source, band, gain);
   source.start(start);
   source.stop(stop);
   return source;
@@ -114,6 +173,7 @@ function play(voice) {
   if (!audio) return false;
   try {
     voice(audio);
+    scheduleIdleSuspend();
     return true;
   } catch {
     return false;
@@ -224,6 +284,7 @@ export function playFanfare(winner) {
     filter.connect(master);
 
     const beat = key === 'FASCIST' ? 0.55 : 0.26;
+    let lastVoice = null;
     chart.steps.forEach((chord, index) => {
       const at = index * beat;
       const last = index === chart.steps.length - 1;
@@ -233,9 +294,8 @@ export function playFanfare(winner) {
           attack: key === 'FASCIST' ? 0.14 : 0.02,
           decay: last ? 1.5 : beat * 0.9,
           at,
+          output: filter,
         });
-        gain.disconnect();
-        gain.connect(filter);
 
         const osc = audio.createOscillator();
         osc.type = chart.type;
@@ -243,15 +303,34 @@ export function playFanfare(winner) {
         // A touch of detune so the chord has some width.
         osc.detune.setValueAtTime(index % 2 ? 6 : -6, start);
         osc.connect(gain);
+        releaseOnEnd(osc, gain);
         osc.start(start);
         osc.stop(stop);
+        lastVoice = osc;
       });
     });
+
+    // The filter is shared by the whole fanfare, so it goes with the last note.
+    if (lastVoice) {
+      const releaseVoice = lastVoice.onended;
+      lastVoice.onended = () => {
+        releaseVoice?.();
+        try {
+          filter.disconnect();
+        } catch {
+          // Already torn down.
+        }
+      };
+    }
   });
 }
 
 /** Test seam: drop the context so the next call rebuilds it. */
 export function resetAudio() {
+  if (idleTimer !== null) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
   try {
     context?.close?.();
   } catch {
@@ -260,4 +339,8 @@ export function resetAudio() {
   context = null;
   master = null;
   noise = null;
+  scheduledUntil = 0;
 }
+
+/** Test seam: what the context is doing right now. */
+export const audioState = () => context?.state ?? 'closed';
