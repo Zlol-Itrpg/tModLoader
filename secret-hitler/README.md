@@ -15,6 +15,7 @@ for making sure only the right person ever sees the hidden information.
 | `src/game/reducer.js` | The state machine — the full turn loop |
 | `src/game/selectors.js` | View derivations: role distribution, reveal intel |
 | `src/game/GameContext.jsx` | `GameProvider` + the hooks screens read from |
+| `src/game/storage.js` | localStorage save/load/clear, total by construction |
 | `src/components/InterstitialScreen.jsx` | The pass-the-device privacy gate |
 | `src/components/SetupScreen.jsx` | Roster, expansion toggle, deal |
 | `src/components/RoleReveal.jsx` | The first handoff: one card per player |
@@ -31,12 +32,12 @@ for making sure only the right person ever sees the hidden information.
 | `src/components/{PolicyPeek,InvestigateLoyalty,SpecialElection,Execution,Confession,Radicalisation}Screen.jsx` | One per power |
 | `src/components/RadicalisationReveal.jsx` | The target's half of Radicalisation |
 | `src/components/GameOverScreen.jsx` | Winners, reason, every card face up |
+| `src/components/AbandonGameButton.jsx` | End a game in progress, behind a confirm |
 | `src/App.jsx` | Phase router |
 | `tailwind.config.js` | 1930s palette and type scale |
 
-Not built yet: persistence. `GameProvider` already accepts a `resumeState` prop
-— the whole store is plain serialisable data, so a saved game is just that
-object handed back. The reducer is complete enough to drive all of them.
+The turn loop, both legislative halves, the veto exchange, all six powers and
+the game-over screen are built, and a game in progress survives a refresh. The reducer is complete enough to drive all of them.
 
 ## Player counts
 
@@ -135,6 +136,50 @@ on `election.result` and the overlay down. It does not resolve. `VoteResults`
 shows every ballot at once, and `RESOLVE_ELECTION` — the Continue button — is
 what seats the government, advances the tracker, or ends the game.
 
+## Persistence
+
+The whole store is plain serialisable data, so a save is just the state with a
+version stamp. `GameProvider` writes it back on every transition and reads it on
+mount; the opening state comes from a `resumeState` prop if given, then a usable
+save, then a fresh game.
+
+`storage.js` is **total**: no stored value can throw out of it. A save that is
+truncated, not JSON, stamped with a different `SAVE_VERSION`, missing a slice,
+or carrying an unknown phase is deleted and treated as absent. That matters more
+than it sounds — a throw during the initialiser is a crash on every load, and
+the app would be unopenable until someone cleared their browser data by hand,
+which is the exact thing this feature exists to avoid. Storage that is blocked
+outright, or full, is handled the same way: `writeSave` returns `false` and play
+continues in memory.
+
+Bump `SAVE_VERSION` whenever the state shape changes in a way an older save
+cannot satisfy. Old saves are discarded, not migrated.
+
+Two things worth knowing:
+
+- **The save holds every secret role.** It is a local file readable from
+  devtools. That is inherent to persisting a hidden-role game on the device it
+  is played on, but it does mean the save is not tamper-proof — a determined
+  player with the phone unlocked can read the deal.
+- **One device, one game.** There is a single save key, so a second game
+  overwrites the first.
+
+## Resetting
+
+`RESET_GAME` rebuilds the state from `createInitialState`. The roster and the
+expansion setting carry over by default, because the same people are usually
+still in the room and the setup screen is right there to edit them; pass
+`{ keepRoster: false }` for a completely empty table.
+
+Both entry points go through `actions.newGame()`, which drops the save *before*
+dispatching so nothing of the finished game can outlive it even if the
+write-back effect never runs:
+
+- **Play again**, on the game-over screen.
+- **End game**, a deliberately quiet control in the HUD, behind an in-app
+  confirmation. Not `window.confirm` — that is styled by the OS, blocks the main
+  thread, and is suppressed outright in some mobile browsers.
+
 ## Reading the state
 
 ```jsx
@@ -152,6 +197,9 @@ actions does not re-render when unrelated state moves:
 | `useGameActions()` | every action creator pre-bound, plus raw `dispatch` |
 | `useGame()` | both, for screens that read and write |
 | `usePlayer(id)` / `useHandoffPlayer()` | the common lookups |
+
+`useGameActions()` also returns `newGame(options)`, which clears the save and
+resets, and the raw `dispatch`.
 
 ## What each player learns at the reveal
 
@@ -274,6 +322,18 @@ public, Radicalisation flipping party but not role, Hitler's immunity being told
 only to Hitler, and the joint victory firing with the expansion on and the
 Liberal-only win with it off.
 
+**Storage** — 44 checks. A mid-game save round-trips exactly, roles and deck
+order included. Seventeen kinds of unusable save — truncated, not JSON, empty,
+`null`, a bare array, no version, an older version, a newer version, a missing
+slice, wrong types, an unknown phase, and the state shape from an earlier build
+of this app — are each rejected *and* deleted, so a bad save is only ever read
+once. Storage that throws on access and a full quota are both survived.
+
+**Persistence + reset** — 45 jsdom checks across real unmount/remount cycles:
+setup and a half-finished ballot both come back intact with the overlay still
+covered, a corrupt save boots to a fresh game rather than crashing, and both
+reset paths clear the save and stay clear after a refresh.
+
 **UI** — driven through jsdom end to end: setup validation at four and twenty,
 add/rename/remove/toggle, the seven role reveals, the HUD (slot counts, power
 labels on fascist 3/4/5 and communist 1/2/3, tracker, deck counters, President
@@ -284,8 +344,8 @@ joint-victory screen. At every handoff the overlay is full-screen and opaque and
 its subtree names only the recipient — the payload enters the DOM only after the
 hold completes.
 
-Suite totals: 600 fuzzed games, 24,480 role-reveals, and 382 assertions across
-eight files.
+Suite totals: 600 fuzzed games, 24,480 role-reveals, and 471 assertions across
+ten files.
 
 ## Wiring it up
 

@@ -78,12 +78,12 @@ export default function GameOverScreen() {
 
       <button
         type="button"
-        onClick={actions.resetGame}
+        onClick={() => actions.newGame()}
         className="mt-5 h-16 w-full shrink-0 rounded-sm bg-ink font-stencil text-sm uppercase
                    tracking-[0.24em] text-paper shadow-[0_3px_0_rgba(20,18,16,0.5)]
                    transition-transform active:translate-y-[3px] active:shadow-none"
       >
-        New game
+        Play again
       </button>
     </div>
   );

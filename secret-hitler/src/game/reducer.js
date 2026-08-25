@@ -78,7 +78,8 @@ export const actions = {
   answerVeto: (accepted) => ({ type: ACTIONS.ANSWER_VETO, payload: { accepted } }),
   resolvePower: (targetId = null) => ({ type: ACTIONS.RESOLVE_POWER, payload: { targetId } }),
   endExecutiveAction: () => ({ type: ACTIONS.END_EXECUTIVE_ACTION }),
-  resetGame: () => ({ type: ACTIONS.RESET_GAME }),
+  /** `keepRoster: false` empties the table as well as the game. */
+  resetGame: ({ keepRoster = true } = {}) => ({ type: ACTIONS.RESET_GAME, payload: { keepRoster } }),
 };
 
 /* -------------------------------------------------------------------------- */
@@ -791,8 +792,10 @@ export function gameReducer(state, action) {
     /* ---- Lifecycle ------------------------------------------------------ */
 
     case ACTIONS.RESET_GAME:
+      // The same people are usually still in the room, so the roster and the
+      // expansion setting carry over by default; everything else is discarded.
       return createInitialState({
-        names: state.players.map((player) => player.name),
+        names: payload.keepRoster === false ? [] : state.players.map((player) => player.name),
         communistsEnabled: state.config.communistsEnabled,
       });
 

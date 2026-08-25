@@ -1,4 +1,5 @@
 import { useGameState } from '../game/GameContext.jsx';
+import AbandonGameButton from './AbandonGameButton.jsx';
 import { BOARDS, CHAOS_AT, getBoardPowers } from '../game/config.js';
 import { PARTIES, POWERS, POWER_INFO } from '../game/constants.js';
 import { BOARD_ORDER } from '../game/initialState.js';
@@ -109,6 +110,13 @@ export default function GameHUD() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-[calc(env(safe-area-inset-top)+0.75rem)]">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="font-stencil text-[0.5625rem] uppercase tracking-[0.28em] text-ink/40">
+          Secret Hitler XL
+        </p>
+        <AbandonGameButton />
+      </div>
+
       {/* ---- The three boards ------------------------------------------- */}
       <div className="space-y-3">
         {tracks.map((party) => (

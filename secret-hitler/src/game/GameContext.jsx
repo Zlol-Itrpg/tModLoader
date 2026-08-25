@@ -1,6 +1,7 @@
-import { createContext, useContext, useMemo, useReducer } from 'react';
+import { createContext, useContext, useEffect, useMemo, useReducer } from 'react';
 import { actions as actionCreators, gameReducer } from './reducer.js';
 import { createInitialState } from './initialState.js';
+import { clearSave, loadSave, writeSave } from './storage.js';
 
 /**
  * The single store for the whole app.
@@ -17,17 +18,24 @@ const GameActionsContext = createContext(null);
 /**
  * @param {object} props
  * @param {object} [props.initialOptions] passed to createInitialState for a new game
- * @param {object} [props.resumeState] a complete previously-saved state to
- *   rehydrate from instead. The whole store is plain serialisable data, so a
- *   saved game is just this object handed back.
+ * @param {object} [props.resumeState] a complete state to rehydrate from,
+ *   ahead of anything in localStorage. Mostly useful for tests and tooling.
  */
 export function GameProvider({ children, initialOptions, resumeState }) {
-  // Lazy init: the initialiser runs once, not on every render.
+  // Where the opening state comes from, in order: an explicit resumeState, a
+  // usable save on this device, then a fresh game. The initialiser runs once.
   const [state, dispatch] = useReducer(
     gameReducer,
-    resumeState ?? initialOptions,
-    (seed) => (resumeState ? resumeState : createInitialState(seed)),
+    { resumeState, initialOptions },
+    (seed) => seed.resumeState ?? loadSave() ?? createInitialState(seed.initialOptions),
   );
+
+  // One device, one game in flight: every transition is written straight back.
+  // A failed write (quota, private browsing) is not worth interrupting play for
+  // — writeSave says so by returning false, and the game carries on in memory.
+  useEffect(() => {
+    writeSave(state);
+  }, [state]);
 
   // Stable for the life of the provider — dispatch never changes identity.
   const boundActions = useMemo(() => {
@@ -37,7 +45,20 @@ export function GameProvider({ children, initialOptions, resumeState }) {
         (...args) => dispatch(create(...args)),
       ]),
     );
-    return { ...bound, dispatch };
+
+    return {
+      ...bound,
+      dispatch,
+      /**
+       * End this game and start over. The save is dropped before the reset so
+       * nothing of the finished game can outlive it even if the write-back
+       * effect never runs; the fresh state is then saved like any other.
+       */
+      newGame: (options) => {
+        clearSave();
+        dispatch(actionCreators.resetGame(options));
+      },
+    };
   }, []);
 
   return (

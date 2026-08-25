@@ -35,13 +35,14 @@ function PhaseStub() {
 }
 
 /**
- * Phase router.
+ * Phase router. Exported so a host that already owns a `GameProvider` — tests,
+ * an embedding shell — can mount it without nesting a second, separate store.
  *
  * Every screen guards its own phase and returns null otherwise, so this stays a
  * flat list rather than a switch. The HUD is always mounted underneath; the
  * interstitials are fixed overlays that cover it while the device is in transit.
  */
-function Game() {
+export function Game() {
   const { phase } = useGameState();
 
   if (phase === PHASES.SETUP) return <SetupScreen />;
