@@ -52,7 +52,6 @@ export const POWERS = {
   // Communist track (XL)
   CONFESSION: 'CONFESSION',
   RADICALISATION: 'RADICALISATION',
-  CONGRESS: 'CONGRESS',
 };
 
 /** Human-readable power copy, kept next to the enum so the UI stays dumb. */
@@ -87,11 +86,6 @@ export const POWER_INFO = {
     blurb: 'Convert a player to the Communist party. Hitler cannot be converted.',
     needsTarget: true,
   },
-  [POWERS.CONGRESS]: {
-    label: 'Congress',
-    blurb: 'The Communists learn who else is Communist — including anyone radicalised since.',
-    needsTarget: false,
-  },
 };
 
 /** Votes are recorded per player id so a re-vote is a plain overwrite. */
@@ -108,7 +102,8 @@ export const HANDOFF = {
   CHANCELLOR_LEGISLATIVE: 'CHANCELLOR_LEGISLATIVE',
   VETO_CONSIDER: 'VETO_CONSIDER',
   EXECUTIVE_ACTION: 'EXECUTIVE_ACTION',
-  POWER_RESULT: 'POWER_RESULT',
+  /** Radicalisation hands the device to its target, not back to the table. */
+  RADICALISATION: 'RADICALISATION',
 };
 
 /** Why the game ended — drives the GAME_OVER copy. */

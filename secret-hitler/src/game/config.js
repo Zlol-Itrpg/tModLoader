@@ -10,44 +10,78 @@ import { PARTIES, POWERS } from './constants.js';
 export const MIN_PLAYERS = 4;
 export const MAX_PLAYERS = 20;
 
-/**
- * Board definitions.
- *
- * `powers` maps *slot number* (the nth policy enacted on that track) to the
- * power the sitting President must use before the turn ends. The trigger slots
- * follow the brief: fascist at 3/4/5, communist at 1/2/3.
- */
+const clampPlayerCount = (playerCount) =>
+  Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, playerCount));
+
+/** Board definitions. Powers are scaled by player count — see POWER_SCHEDULE. */
 export const BOARDS = {
-  [PARTIES.LIBERAL]: {
-    id: PARTIES.LIBERAL,
-    label: 'Liberal',
-    slots: 5,
-    winAt: 5,
-    powers: {},
-  },
-  [PARTIES.FASCIST]: {
-    id: PARTIES.FASCIST,
-    label: 'Fascist',
-    slots: 6,
-    winAt: 6,
+  [PARTIES.LIBERAL]: { id: PARTIES.LIBERAL, label: 'Liberal', slots: 5, winAt: 5 },
+  [PARTIES.FASCIST]: { id: PARTIES.FASCIST, label: 'Fascist', slots: 6, winAt: 6 },
+  [PARTIES.COMMUNIST]: { id: PARTIES.COMMUNIST, label: 'Communist', slots: 5, winAt: 5 },
+};
+
+/**
+ * Which slot on which track grants which power, keyed by table size.
+ *
+ * The fascist track tightens as the table grows: a small table gets a peek and
+ * two executions, a large one opens with two investigations. Keys are slot
+ * numbers — the nth policy of that colour to reach the board.
+ */
+export const FASCIST_POWER_SCHEDULE = [
+  {
+    maxPlayers: 6,
     powers: {
+      3: POWERS.POLICY_PEEK,
+      4: POWERS.EXECUTION,
+      5: POWERS.EXECUTION,
+    },
+  },
+  {
+    maxPlayers: 8,
+    powers: {
+      2: POWERS.INVESTIGATE_LOYALTY,
       3: POWERS.SPECIAL_ELECTION,
       4: POWERS.EXECUTION,
       5: POWERS.EXECUTION,
     },
   },
-  [PARTIES.COMMUNIST]: {
-    id: PARTIES.COMMUNIST,
-    label: 'Communist',
-    slots: 5,
-    winAt: 5,
+  {
+    maxPlayers: MAX_PLAYERS,
     powers: {
-      1: POWERS.CONFESSION,
-      2: POWERS.RADICALISATION,
-      3: POWERS.CONGRESS,
+      1: POWERS.INVESTIGATE_LOYALTY,
+      2: POWERS.INVESTIGATE_LOYALTY,
+      3: POWERS.SPECIAL_ELECTION,
+      4: POWERS.EXECUTION,
+      5: POWERS.EXECUTION,
     },
   },
+];
+
+/** The communist track does not scale. */
+export const COMMUNIST_POWERS = {
+  1: POWERS.CONFESSION,
+  2: POWERS.CONFESSION,
+  3: POWERS.RADICALISATION,
 };
+
+/**
+ * Slot -> power for one track at one table size.
+ *
+ * `playerCount` is the size the game *started* at (cached on `config` at deal
+ * time), so executions never re-tune the board mid-game.
+ *
+ * @returns {Record<number, string>} empty for tracks that grant no powers
+ */
+export function getBoardPowers(party, playerCount) {
+  if (party === PARTIES.COMMUNIST) return COMMUNIST_POWERS;
+  if (party !== PARTIES.FASCIST) return {};
+
+  const count = clampPlayerCount(playerCount);
+  const row =
+    FASCIST_POWER_SCHEDULE.find((entry) => count <= entry.maxPlayers) ??
+    FASCIST_POWER_SCHEDULE[FASCIST_POWER_SCHEDULE.length - 1];
+  return row.powers;
+}
 
 /** Fascists gain the veto power once this many fascist policies are enacted. */
 export const VETO_UNLOCKS_AT = 5;
@@ -113,9 +147,6 @@ export const BASE_ROLE_COMPOSITION = {
   5: 1, 6: 1, 7: 2, 8: 2, 9: 3, 10: 3, 11: 3, 12: 4,
   13: 4, 14: 4, 15: 5, 16: 5, 17: 5, 18: 6, 19: 6, 20: 6,
 };
-
-const clampPlayerCount = (playerCount) =>
-  Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, playerCount));
 
 /** @returns {{liberal:number, fascist:number, communist:number}} */
 export function getDeckComposition(playerCount, communistsEnabled = true) {

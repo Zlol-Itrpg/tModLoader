@@ -117,7 +117,13 @@ export function createInitialState(options = {}) {
       vetoRejected: false,
     },
 
-    /** Set when a board slot fires a power; cleared when the President resolves it. */
+    /**
+     * The power awaiting resolution.
+     * `{ power, presidentId, targetId, result }` — `result` is null until the
+     * power is applied, then holds whatever the screen needs to display
+     * (peeked cards, an investigated party, a special-election seat). Cleared
+     * by END_EXECUTIVE_ACTION, which is also what advances the turn.
+     */
     pendingPower: null,
 
     /**
@@ -127,8 +133,12 @@ export function createInitialState(options = {}) {
      */
     handoff: null,
 
-    /** Terminal state. */
-    winner: null,
+    /**
+     * Terminal state. `winners` is a list because executing Hitler wins the
+     * game for the Liberals and the Communists together.
+     * @type {null | string[]}
+     */
+    winners: null,
     winReason: null,
 
     /** Append-only public record; safe to render to the whole table. */

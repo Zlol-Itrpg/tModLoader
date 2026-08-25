@@ -17,6 +17,7 @@ import {
   MIN_PLAYERS,
   PRESIDENT_TERM_LIMIT_ABOVE,
   VETO_UNLOCKS_AT,
+  getBoardPowers,
   getRoleComposition,
 } from './config.js';
 import { drawPolicies, generateDeck, peekPolicies, shuffle } from './deck.js';
@@ -47,6 +48,7 @@ export const ACTIONS = {
   REQUEST_VETO: 'REQUEST_VETO',
   ANSWER_VETO: 'ANSWER_VETO',
   RESOLVE_POWER: 'RESOLVE_POWER',
+  END_EXECUTIVE_ACTION: 'END_EXECUTIVE_ACTION',
 
   RESET_GAME: 'RESET_GAME',
 };
@@ -75,6 +77,7 @@ export const actions = {
   requestVeto: () => ({ type: ACTIONS.REQUEST_VETO }),
   answerVeto: (accepted) => ({ type: ACTIONS.ANSWER_VETO, payload: { accepted } }),
   resolvePower: (targetId = null) => ({ type: ACTIONS.RESOLVE_POWER, payload: { targetId } }),
+  endExecutiveAction: () => ({ type: ACTIONS.END_EXECUTIVE_ACTION }),
   resetGame: () => ({ type: ACTIONS.RESET_GAME }),
 };
 
@@ -149,22 +152,27 @@ export const isVetoUnlocked = (state) =>
   state.boards[PARTIES.FASCIST].enacted >= VETO_UNLOCKS_AT;
 
 /**
- * Legal targets for the power currently awaiting resolution.
- * The President is never a legal target, and Investigate Loyalty may not be
- * pointed at someone who has already been investigated this game.
+ * Legal targets for a power. The President is never one, Investigate Loyalty
+ * may not be pointed at someone already investigated, and Radicalisation may
+ * not be pointed at someone already converted.
  */
-export const eligiblePowerTargets = (state) => {
-  if (!state.pendingPower) return [];
-  const { power, presidentId } = state.pendingPower;
+export const powerTargets = (state, power, presidentId) => {
   if (!POWER_INFO[power].needsTarget) return [];
 
   return alivePlayers(state).filter((player) => {
     if (player.id === presidentId) return false;
+    // A player may only be investigated once per game.
     if (power === POWERS.INVESTIGATE_LOYALTY && player.investigatedBy.length > 0) return false;
     if (power === POWERS.RADICALISATION && player.hasBeenRadicalised) return false;
     return true;
   });
 };
+
+/** Legal targets for the power currently awaiting resolution. */
+export const eligiblePowerTargets = (state) =>
+  state.pendingPower
+    ? powerTargets(state, state.pendingPower.power, state.pendingPower.presidentId)
+    : [];
 
 /* -------------------------------------------------------------------------- */
 /* Turn-loop transitions                                                       */
@@ -208,14 +216,27 @@ function beginNomination(state, override = null) {
   );
 }
 
-function endGame(state, winner, reason) {
+/**
+ * @param {string[]} winners one party, or both of them — executing Hitler wins
+ *   the game for the Liberals *and* the Communists when the expansion is on.
+ */
+function endGame(state, winners, reason) {
+  const named = winners.map((party) => `${BOARDS[party].label}s`).join(' and the ');
+
   return log(
-    { ...state, phase: PHASES.GAME_OVER, winner, winReason: reason, handoff: null, pendingPower: null },
+    {
+      ...state,
+      phase: PHASES.GAME_OVER,
+      winners,
+      winReason: reason,
+      handoff: null,
+      pendingPower: null,
+    },
     reason === WIN_REASONS.HITLER_ELECTED
       ? 'Hitler was elected Chancellor. The Fascists win.'
       : reason === WIN_REASONS.HITLER_EXECUTED
-        ? 'Hitler is dead. The Liberals win.'
-        : `${BOARDS[winner].label}s complete their agenda and win.`,
+        ? `Hitler is dead. The ${named} win.`
+        : `The ${named} complete their agenda and win.`,
   );
 }
 
@@ -239,25 +260,54 @@ function enactPolicy(state, party, { grantPowers = true } = {}) {
   );
 
   if (enacted >= BOARDS[party].winAt) {
-    return endGame(next, party, WIN_REASONS.POLICY_TRACK);
+    return endGame(next, [party], WIN_REASONS.POLICY_TRACK);
   }
 
-  const power = grantPowers ? BOARDS[party].powers[enacted] : undefined;
+  const power = grantPowers
+    ? getBoardPowers(party, next.config.playerCount)[enacted]
+    : undefined;
   if (!power) return beginNomination(next);
 
   return triggerPower(next, power);
 }
 
-/** Move into EXECUTIVE_ACTION and hand the device to the sitting President. */
+/**
+ * Move into EXECUTIVE_ACTION and hand the device to the sitting President.
+ *
+ * Policy Peek has nothing to choose, so its result is computed here and the
+ * President's screen simply displays it. A targeted power with no legal target
+ * left — every survivor already investigated, say — is skipped rather than
+ * stranding the game in a phase nobody can leave.
+ */
 function triggerPower(state, power) {
   const presidentId = state.government.presidentId;
-  const withPower = log(
-    { ...state, phase: PHASES.EXECUTIVE_ACTION, pendingPower: { power, presidentId, targetId: null } },
+
+  if (POWER_INFO[power].needsTarget && powerTargets(state, power, presidentId).length === 0) {
+    return beginNomination(
+      log(state, `${POWER_INFO[power].label} has no legal target and is skipped.`),
+    );
+  }
+
+  let announced = log(
+    {
+      ...state,
+      phase: PHASES.EXECUTIVE_ACTION,
+      pendingPower: { power, presidentId, targetId: null, result: null },
+    },
     `${nameOf(state, presidentId)} must use ${POWER_INFO[power].label}.`,
   );
 
-  // Targetless powers still need a private screen for their result.
-  return handOffTo(withPower, HANDOFF.EXECUTIVE_ACTION, presidentId, { power });
+  if (power === POWERS.POLICY_PEEK) {
+    const { peeked, deck, discard } = peekPolicies(announced.deck, announced.discard, 3);
+    announced = {
+      ...announced,
+      deck,
+      discard,
+      pendingPower: { ...announced.pendingPower, result: { cards: peeked } },
+    };
+  }
+
+  return handOffTo(announced, HANDOFF.EXECUTIVE_ACTION, presidentId, { power });
 }
 
 /** A failed third election: the country acts on its own. */
@@ -317,7 +367,7 @@ function resolveElection(state) {
     chancellor.role === ROLES.HITLER &&
     state.boards[PARTIES.FASCIST].enacted >= HITLER_CHANCELLOR_DANGER_AT
   ) {
-    return endGame(state, PARTIES.FASCIST, WIN_REASONS.HITLER_ELECTED);
+    return endGame(state, [PARTIES.FASCIST], WIN_REASONS.HITLER_ELECTED);
   }
 
   const elected = {
@@ -356,76 +406,71 @@ function resolveElection(state) {
 /* Executive powers                                                            */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Apply a targeted power and record its outcome on `pendingPower.result`.
+ *
+ * Nothing here advances the turn: every power ends with END_EXECUTIVE_ACTION,
+ * so the President (or, for Radicalisation, the target) gets to read the result
+ * before the device moves on. The one exception is shooting Hitler, which ends
+ * the game outright and has no result to read.
+ */
 function applyPower(state, power, targetId) {
   const presidentId = state.government.presidentId;
+  const target = getPlayer(state, targetId);
+  const settle = (next, result, patch = {}) => ({
+    ...next,
+    ...patch,
+    pendingPower: { ...next.pendingPower, targetId, result },
+  });
 
   switch (power) {
     case POWERS.INVESTIGATE_LOYALTY: {
-      const target = getPlayer(state, targetId);
       const marked = updatePlayer(state, targetId, {
         investigatedBy: [...target.investigatedBy, presidentId],
       });
-      const noted = log(
-        marked,
-        `${nameOf(state, presidentId)} investigated ${target.name}.`,
-      );
-      // The card itself is private — only the President sees it.
-      return handOffTo(noted, HANDOFF.POWER_RESULT, presidentId, {
-        power,
-        targetId,
-        party: target.party,
-      });
-    }
-
-    case POWERS.POLICY_PEEK: {
-      const { peeked, deck, discard } = peekPolicies(state.deck, state.discard, 3);
-      const noted = log(
-        { ...state, deck, discard },
-        `${nameOf(state, presidentId)} peeked at the top three policies.`,
-      );
-      return handOffTo(noted, HANDOFF.POWER_RESULT, presidentId, { power, cards: peeked });
+      // Public: that an investigation happened. Private: what it found.
+      const noted = log(marked, `${nameOf(state, presidentId)} investigated ${target.name}.`);
+      return settle(noted, { party: target.party });
     }
 
     case POWERS.SPECIAL_ELECTION: {
-      const targetIndex = state.players.findIndex((player) => player.id === targetId);
-      const called = log(
+      const seatIndex = state.players.findIndex((player) => player.id === targetId);
+      const noted = log(
         state,
-        `${nameOf(state, presidentId)} calls a Special Election: ${nameOf(state, targetId)} is the next Presidential Candidate.`,
+        `${nameOf(state, presidentId)} calls a Special Election: ${target.name} is the next Presidential Candidate.`,
       );
-      return beginNomination({ ...called, pendingPower: null, handoff: null }, {
-        seatIndex: targetIndex,
-        returnToIndex: state.rotation.presidentIndex,
-      });
+      // The seat change is applied by END_EXECUTIVE_ACTION, so the President can
+      // read the confirmation first. Rotation resumes from the calling seat.
+      return settle(noted, { seatIndex, returnToIndex: state.rotation.presidentIndex });
     }
 
     case POWERS.EXECUTION: {
-      const target = getPlayer(state, targetId);
       const killed = log(
         updatePlayer(state, targetId, { isAlive: false }),
         `${nameOf(state, presidentId)} executed ${target.name}.`,
       );
       if (target.role === ROLES.HITLER) {
-        return endGame(killed, PARTIES.LIBERAL, WIN_REASONS.HITLER_EXECUTED);
+        // XL: shooting Hitler is a joint Liberal and Communist victory.
+        const winners = state.config.communistsEnabled
+          ? [PARTIES.LIBERAL, PARTIES.COMMUNIST]
+          : [PARTIES.LIBERAL];
+        return endGame(killed, winners, WIN_REASONS.HITLER_EXECUTED);
       }
-      return beginNomination({ ...killed, pendingPower: null, handoff: null });
+      return settle(killed, { wasHitler: false });
     }
 
-    /* ---- Communist powers (XL) ------------------------------------------ */
-
     case POWERS.CONFESSION: {
-      // Public by design: the whole table sees the card, so no interstitial.
-      const target = getPlayer(state, targetId);
+      // Public by design: the whole table reads this off the screen.
       const confessed = log(
         updatePlayer(state, targetId, { isPartyPublic: true }),
         `Confession: ${target.name} is a ${BOARDS[target.party].label}.`,
       );
-      return beginNomination({ ...confessed, pendingPower: null, handoff: null });
+      return settle(confessed, { party: target.party });
     }
 
     case POWERS.RADICALISATION: {
-      // TODO(xl): confirm the canonical Hitler-immunity reveal — right now the
-      // attempt fails silently to the table and only the President is told.
-      const target = getPlayer(state, targetId);
+      // Hitler cannot be converted, and only he is told that it failed — the
+      // President never learns the outcome, which is what makes it a gamble.
       const immune = target.role === ROLES.HITLER;
       const converted = immune
         ? state
@@ -435,24 +480,19 @@ function applyPower(state, power, targetId) {
           });
       const noted = log(
         converted,
-        `${nameOf(state, presidentId)} attempted to radicalise ${target.name}.`,
+        `${nameOf(state, presidentId)} radicalised ${target.name}.`,
       );
-      return handOffTo(noted, HANDOFF.POWER_RESULT, presidentId, {
-        power,
+      // The device goes to the target, not back to the table.
+      return handOffTo(
+        settle(noted, { succeeded: !immune }),
+        HANDOFF.RADICALISATION,
         targetId,
-        succeeded: !immune,
-      });
-    }
-
-    case POWERS.CONGRESS: {
-      // TODO(xl): walk the device through every living Communist so each one
-      // privately sees the updated cell, including anyone radicalised since.
-      const noted = log(state, 'Congress: the Communists reconvene and identify each other.');
-      return beginNomination({ ...noted, pendingPower: null, handoff: null });
+        { power },
+      );
     }
 
     default:
-      return beginNomination({ ...state, pendingPower: null, handoff: null });
+      return settle(state, {});
   }
 }
 
@@ -566,10 +606,6 @@ export function gameReducer(state, action) {
       if (!state.handoff?.revealed) return state;
 
       if (state.handoff.kind === HANDOFF.ROLE_REVEAL) return continueRoleReveal(state);
-
-      if (state.handoff.kind === HANDOFF.POWER_RESULT) {
-        return beginNomination({ ...state, pendingPower: null, handoff: null });
-      }
 
       return state;
     }
@@ -720,18 +756,36 @@ export function gameReducer(state, action) {
 
     case ACTIONS.RESOLVE_POWER: {
       if (state.phase !== PHASES.EXECUTIVE_ACTION || !state.pendingPower) return state;
-      if (!state.handoff?.revealed) return state;
+      // The President must be holding a revealed screen, and may only act once.
+      if (!state.handoff?.revealed || state.pendingPower.result) return state;
 
       const { power } = state.pendingPower;
-
-      if (
-        POWER_INFO[power].needsTarget &&
-        !eligiblePowerTargets(state).some((player) => player.id === payload.targetId)
-      ) {
+      if (!POWER_INFO[power].needsTarget) return state;
+      if (!eligiblePowerTargets(state).some((player) => player.id === payload.targetId)) {
         return state;
       }
 
       return applyPower(state, power, payload.targetId);
+    }
+
+    case ACTIONS.END_EXECUTIVE_ACTION: {
+      if (state.phase !== PHASES.EXECUTIVE_ACTION || !state.pendingPower) return state;
+      // Nothing ends before its outcome exists, or before it has been read.
+      if (!state.pendingPower.result || !state.handoff?.revealed) return state;
+
+      const { power, result } = state.pendingPower;
+      const cleared = { ...state, pendingPower: null, handoff: null };
+
+      // A Special Election seats its target for one turn, then the rotation
+      // resumes from the seat that called it.
+      if (power === POWERS.SPECIAL_ELECTION) {
+        return beginNomination(cleared, {
+          seatIndex: result.seatIndex,
+          returnToIndex: result.returnToIndex,
+        });
+      }
+
+      return beginNomination(cleared);
     }
 
     /* ---- Lifecycle ------------------------------------------------------ */

@@ -14,9 +14,20 @@ import { createInitialState } from './initialState.js';
 const GameStateContext = createContext(null);
 const GameActionsContext = createContext(null);
 
-export function GameProvider({ children, initialOptions }) {
-  // Lazy init: createInitialState runs once, not on every render.
-  const [state, dispatch] = useReducer(gameReducer, initialOptions, createInitialState);
+/**
+ * @param {object} props
+ * @param {object} [props.initialOptions] passed to createInitialState for a new game
+ * @param {object} [props.resumeState] a complete previously-saved state to
+ *   rehydrate from instead. The whole store is plain serialisable data, so a
+ *   saved game is just this object handed back.
+ */
+export function GameProvider({ children, initialOptions, resumeState }) {
+  // Lazy init: the initialiser runs once, not on every render.
+  const [state, dispatch] = useReducer(
+    gameReducer,
+    resumeState ?? initialOptions,
+    (seed) => (resumeState ? resumeState : createInitialState(seed)),
+  );
 
   // Stable for the life of the provider — dispatch never changes identity.
   const boundActions = useMemo(() => {

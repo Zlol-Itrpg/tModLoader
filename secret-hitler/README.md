@@ -26,10 +26,17 @@ for making sure only the right person ever sees the hidden information.
 | `src/components/LegislativePresident.jsx` | Draw three, bin one |
 | `src/components/LegislativeChancellor.jsx` | Two in, one enacted |
 | `src/components/VetoScreen.jsx` | The veto exchange |
+| `src/components/ExecutiveActionScreen.jsx` | Router for the six powers |
+| `src/components/TargetPicker.jsx` | Shared select-then-confirm target list |
+| `src/components/{PolicyPeek,InvestigateLoyalty,SpecialElection,Execution,Confession,Radicalisation}Screen.jsx` | One per power |
+| `src/components/RadicalisationReveal.jsx` | The target's half of Radicalisation |
+| `src/components/GameOverScreen.jsx` | Winners, reason, every card face up |
 | `src/App.jsx` | Phase router |
 | `tailwind.config.js` | 1930s palette and type scale |
 
-Not built yet: the executive-action and game-over screens, and persistence. The reducer is complete enough to drive all of them.
+Not built yet: persistence. `GameProvider` already accepts a `resumeState` prop
+— the whole store is plain serialisable data, so a saved game is just that
+object handed back. The reducer is complete enough to drive all of them.
 
 ## Player counts
 
@@ -180,31 +187,62 @@ nothing to decide — `ROLE_REVEAL`, `POWER_RESULT` — close with
 Confession is deliberately *not* behind an interstitial: making a membership
 card public to the whole table is the entire point of the power.
 
-## Boards
+## Boards and powers
 
-Thresholds follow the brief and all live in `config.js`:
+All thresholds live in `config.js`. The fascist track scales with the table;
+the communist track does not.
 
 | Track | Wins at | Powers |
 | --- | --- | --- |
 | Liberal | 5 | — |
-| Fascist | 6 | 3 Special Election · 4 Execution · 5 Execution |
-| Communist | 5 | 1 Confession · 2 Radicalisation · 3 Congress |
+| Fascist (4–6) | 6 | 3 Policy Peek · 4 Execution · 5 Execution |
+| Fascist (7–8) | 6 | 2 Investigate · 3 Special Election · 4–5 Execution |
+| Fascist (9–20) | 6 | 1–2 Investigate · 3 Special Election · 4–5 Execution |
+| Communist | 5 | 1 Confession · 2 Confession · 3 Radicalisation |
+
+`getBoardPowers(party, playerCount)` is the only way to ask, and it reads the
+size the game *started* at (cached on `config` at deal time), so executions
+never re-tune the board mid-game.
 
 Veto unlocks at 5 fascist policies. Hitler elected Chancellor at 3+ fascist
 policies ends the game.
 
-## Known stubs
+## The executive phase
 
-- **Radicalisation** flips the target's `party` to Communist while leaving
-  `role` alone, so a radicalised Fascist reads as Communist to an
-  investigation. Hitler is immune and the attempt fails privately — the
-  canonical reveal rule still needs confirming (`TODO(xl)` in `reducer.js`).
-- **Congress** logs and resolves immediately; it still needs to walk the device
-  through each living Communist.
+Every power resolves in two steps, so nobody's result vanishes when the phone
+moves:
+
+1. `RESOLVE_POWER` applies the effect and writes what happened to
+   `pendingPower.result`. It never advances the turn.
+2. `END_EXECUTIVE_ACTION` clears the power and rotates to the next nomination.
+
+Policy Peek has nothing to choose, so its cards are turned over when the power
+*triggers* and the President's screen simply displays them. A targeted power
+with no legal target left — every survivor already investigated — is skipped
+with a log line rather than stranding the game in a phase nobody can leave.
+
+Two powers break the usual shape:
+
+- **Confession** is public. The device stays with the President and the screen
+  says to show it to the table; the membership stays public for the rest of the
+  game and the HUD badges it.
+- **Radicalisation** hands the device to its *target*, who is the only one told
+  whether it worked. Hitler is immune, and only Hitler learns that — the
+  President never finds out, which is what makes the power a gamble. A
+  radicalised player's `party` flips to Communist while their secret `role` is
+  untouched, so they still win with whoever they started with.
+
+Executing Hitler ends the game immediately. With the expansion on that is a
+**joint Liberal and Communist victory** — `state.winners` is a list, not a
+single party, and `GameOverScreen` renders it as one.
+
+## Known stubs and house rules
+
 - `DECK_COMPOSITION` is placeholder balance derived from the base game's
   6L/11F. Drop in the published XL table when the group picks a printing.
-- `INVESTIGATE_LOYALTY` and `POLICY_PEEK` are implemented but unused, since the
-  brief fixed the fascist powers at slots 3/4/5.
+- Four-player games are a house rule, as described above.
+- `POWERS.CONGRESS` was retired when the communist schedule became
+  1/2 Confession, 3 Radicalisation. Nothing references it.
 
 ## Verification so far
 
@@ -227,14 +265,27 @@ card conservation through discard and enactment, stale and duplicate policy ids
 rejected, both veto branches, a veto that trips chaos granting no power, and the
 Hitler-Chancellor check firing on election but not on legislation.
 
+**Executive powers** — 59 reducer checks: every schedule row at 4/6/7/9/20
+players, the schedule holding steady as players are executed, Policy Peek not
+consuming the deck, investigations reporting a party and never a role,
+one-investigation-per-player, the special-election detour returning to the
+calling seat, a skipped power when no legal target remains, Confession going
+public, Radicalisation flipping party but not role, Hitler's immunity being told
+only to Hitler, and the joint victory firing with the expansion on and the
+Liberal-only win with it off.
+
 **UI** — driven through jsdom end to end: setup validation at four and twenty,
 add/rename/remove/toggle, the seven role reveals, the HUD (slot counts, power
 labels on fascist 3/4/5 and communist 1/2/3, tracker, deck counters, President
 and Prev Pres / Prev Chan badges), nomination eligibility matching
 `eligibleChancellors` exactly, six ballots, the reveal grid, and the full
-legislative session including both veto answers. At every handoff the overlay is
-full-screen and opaque and its subtree names only the recipient — the payload
-enters the DOM only after the hold completes.
+legislative session including both veto answers, and all six powers plus the
+joint-victory screen. At every handoff the overlay is full-screen and opaque and
+its subtree names only the recipient — the payload enters the DOM only after the
+hold completes.
+
+Suite totals: 600 fuzzed games, 24,480 role-reveals, and 382 assertions across
+eight files.
 
 ## Wiring it up
 

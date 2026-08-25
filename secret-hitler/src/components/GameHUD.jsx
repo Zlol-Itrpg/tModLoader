@@ -1,5 +1,5 @@
 import { useGameState } from '../game/GameContext.jsx';
-import { BOARDS, CHAOS_AT } from '../game/config.js';
+import { BOARDS, CHAOS_AT, getBoardPowers } from '../game/config.js';
 import { PARTIES, POWERS, POWER_INFO } from '../game/constants.js';
 import { BOARD_ORDER } from '../game/initialState.js';
 
@@ -19,7 +19,6 @@ const POWER_GLYPH = {
   [POWERS.EXECUTION]: '✖',
   [POWERS.CONFESSION]: '◉',
   [POWERS.RADICALISATION]: '↺',
-  [POWERS.CONGRESS]: '☰',
 };
 
 const TRACK = {
@@ -28,13 +27,15 @@ const TRACK = {
   [PARTIES.COMMUNIST]: { fill: 'bg-communist', edge: 'border-communist/40', text: 'text-communist' },
 };
 
-function PolicyTrack({ party, enacted }) {
+function PolicyTrack({ party, enacted, playerCount }) {
   const board = BOARDS[party];
   const style = TRACK[party];
   const slots = Array.from({ length: board.slots }, (_, index) => index + 1);
+  // Fascist powers scale with the table, so the rail has to ask, not assume.
+  const powers = getBoardPowers(party, playerCount);
 
-  const nextPowerSlot = slots.find((slot) => board.powers[slot] && slot > enacted);
-  const nextPower = nextPowerSlot ? board.powers[nextPowerSlot] : null;
+  const nextPowerSlot = slots.find((slot) => powers[slot] && slot > enacted);
+  const nextPower = nextPowerSlot ? powers[nextPowerSlot] : null;
 
   return (
     <section>
@@ -50,7 +51,7 @@ function PolicyTrack({ party, enacted }) {
       <div className="mt-1 flex gap-1 overflow-x-auto pb-0.5">
         {slots.map((slot) => {
           const isFilled = slot <= enacted;
-          const power = board.powers[slot];
+          const power = powers[slot];
           return (
             <div
               key={slot}
@@ -111,7 +112,12 @@ export default function GameHUD() {
       {/* ---- The three boards ------------------------------------------- */}
       <div className="space-y-3">
         {tracks.map((party) => (
-          <PolicyTrack key={party} party={party} enacted={boards[party].enacted} />
+          <PolicyTrack
+            key={party}
+            party={party}
+            enacted={boards[party].enacted}
+            playerCount={config.playerCount}
+          />
         ))}
       </div>
 
