@@ -1,0 +1,7 @@
+{
+  "name": "secret-hitler-xl",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Local pass-and-play Secret Hitler with the fan-made Communist (XL) expansion."
+}
