@@ -8,6 +8,7 @@
 /** Top-level state machine phases. */
 export const PHASES = {
   SETUP: 'SETUP',
+  ROLE_REVEAL: 'ROLE_REVEAL',
   NOMINATION: 'NOMINATION',
   VOTING: 'VOTING',
   LEGISLATIVE_PRESIDENT: 'LEGISLATIVE_PRESIDENT',

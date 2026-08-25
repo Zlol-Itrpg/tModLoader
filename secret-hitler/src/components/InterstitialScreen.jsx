@@ -78,8 +78,11 @@ export default function InterstitialScreen({
 
   const startHold = useCallback(() => {
     if (holdMs <= 0) return;
-    const startedAt = performance.now();
+    // Anchor to the first frame's own timestamp rather than a second clock:
+    // rAF timestamps and performance.now() need not share a time origin.
+    let startedAt = null;
     const tick = (now) => {
+      if (startedAt === null) startedAt = now;
       const progress = Math.min(1, (now - startedAt) / holdMs);
       setHoldProgress(progress);
       if (progress >= 1) {

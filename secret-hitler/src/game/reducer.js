@@ -115,13 +115,18 @@ export const eligibleChancellors = (state) => {
     state.lastElectedGovernment;
   const aliveCount = alivePlayers(state).length;
 
-  return alivePlayers(state).filter((player) => {
+  const candidates = alivePlayers(state).filter((player) => {
     if (player.id === presidentId) return false;
     if (player.id === lastChancellor) return false;
     // With a small table the previous President becomes eligible again.
     if (aliveCount > PRESIDENT_TERM_LIMIT_ABOVE && player.id === lastPresident) return false;
     return true;
   });
+
+  // Down to two survivors the term limit can lock out everyone. The table is
+  // still owed a nomination, so the limit yields rather than the game stalling.
+  if (candidates.length > 0) return candidates;
+  return alivePlayers(state).filter((player) => player.id !== presidentId);
 };
 
 export const isVetoUnlocked = (state) =>
@@ -448,9 +453,9 @@ function startGame(state) {
     `A new game begins with ${count} players.`,
   );
 
-  // Roles are revealed one player at a time before the first nomination; the
-  // phase stays SETUP until the last player has handed the device back.
-  return handOffTo(started, HANDOFF.ROLE_REVEAL, players[0].id);
+  // Roles are revealed one player at a time; the phase holds at ROLE_REVEAL
+  // until the last player has handed the device back.
+  return handOffTo({ ...started, phase: PHASES.ROLE_REVEAL }, HANDOFF.ROLE_REVEAL, players[0].id);
 }
 
 /** Walk the role-reveal chain, then open the first nomination. */

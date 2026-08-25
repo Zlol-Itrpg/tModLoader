@@ -7,7 +7,7 @@ import { PARTIES, POWERS } from './constants.js';
  * threshold. Swap a table here to retune balance without touching the machine.
  */
 
-export const MIN_PLAYERS = 5;
+export const MIN_PLAYERS = 4;
 export const MAX_PLAYERS = 20;
 
 /**
@@ -52,6 +52,9 @@ export const BOARDS = {
 /** Fascists gain the veto power once this many fascist policies are enacted. */
 export const VETO_UNLOCKS_AT = 5;
 
+/** Below this player count Hitler is shown the Fascists at the role reveal. */
+export const HITLER_KNOWS_FASCISTS_BELOW = 7;
+
 /** Hitler being elected Chancellor loses the game from this fascist count up. */
 export const HITLER_CHANCELLOR_DANGER_AT = 3;
 
@@ -66,6 +69,7 @@ export const CHAOS_AT = 3;
  * group settles on a printing — the reducer only reads `generateDeck`.
  */
 export const DECK_COMPOSITION = [
+  { maxPlayers: 4, liberal: 5, fascist: 9, communist: 7 },
   { maxPlayers: 6, liberal: 5, fascist: 10, communist: 8 },
   { maxPlayers: 8, liberal: 6, fascist: 10, communist: 8 },
   { maxPlayers: 10, liberal: 6, fascist: 11, communist: 8 },
@@ -81,6 +85,10 @@ export const BASE_DECK_COMPOSITION = { liberal: 6, fascist: 11, communist: 0 };
  * Liberals fill whatever is left over.
  */
 export const ROLE_COMPOSITION = {
+  // Four is below the official minimum. The standard homebrew is 2 Liberals,
+  // 1 Fascist and Hitler; with the expansion on, a Liberal becomes the lone
+  // Communist. Both are house rules — see README.
+  4: { fascists: 1, communists: 1 },
   5: { fascists: 1, communists: 1 },
   6: { fascists: 1, communists: 1 },
   7: { fascists: 2, communists: 1 },
@@ -101,6 +109,7 @@ export const ROLE_COMPOSITION = {
 
 /** Base-game fascist counts, used when the communist expansion is off. */
 export const BASE_ROLE_COMPOSITION = {
+  4: 1,
   5: 1, 6: 1, 7: 2, 8: 2, 9: 3, 10: 3, 11: 3, 12: 4,
   13: 4, 14: 4, 15: 5, 16: 5, 17: 5, 18: 6, 19: 6, 20: 6,
 };
