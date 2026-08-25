@@ -11,7 +11,8 @@ export default {
         paper: '#f4ecd8',
         brass: '#a8873f',
         liberal: '#2e6f7d',
-        fascist: '#b4472c',
+        fascist: '#8f5124',
+        gold: '#c9a227',
         communist: '#9c1f1c',
       },
       fontFamily: {

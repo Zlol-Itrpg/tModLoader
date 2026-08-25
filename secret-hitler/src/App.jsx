@@ -1,33 +1,56 @@
 import { GameProvider, useGameState } from './game/GameContext.jsx';
 import SetupScreen from './components/SetupScreen.jsx';
 import RoleReveal from './components/RoleReveal.jsx';
+import GameHUD from './components/GameHUD.jsx';
+import NominationScreen from './components/NominationScreen.jsx';
+import VotingScreen from './components/VotingScreen.jsx';
+import VoteResults from './components/VoteResults.jsx';
 import { PHASES } from './game/constants.js';
 
+const BUILT = new Set([PHASES.NOMINATION, PHASES.VOTING, PHASES.VOTE_REVEAL]);
+
+/** Placeholder for the phases whose screens are still to come. */
+function PhaseStub() {
+  const { phase } = useGameState();
+  if (phase === PHASES.SETUP || phase === PHASES.ROLE_REVEAL || BUILT.has(phase)) return null;
+
+  return (
+    <section className="shrink-0 border-t-2 border-ink/20 bg-paper/60 px-4 py-8 text-center">
+      <p className="font-display text-lg text-ink/55">{phase} — screen not built yet.</p>
+    </section>
+  );
+}
+
 /**
- * Phase router. Each phase owns one screen; the interstitial screens overlay
- * whatever is underneath, which is why RoleReveal renders as a sibling rather
- * than replacing the board.
+ * Phase router.
+ *
+ * Every screen guards its own phase and returns null otherwise, so this stays a
+ * flat list rather than a switch. The HUD is always mounted underneath; the
+ * interstitials are fixed overlays that cover it while the device is in transit.
  */
-function CurrentPhase() {
+function Game() {
   const { phase } = useGameState();
 
   if (phase === PHASES.SETUP) return <SetupScreen />;
-  if (phase === PHASES.ROLE_REVEAL) return <RoleReveal />;
 
-  // TODO: board + nomination, ballot, legislative session, powers, game over.
   return (
-    <div className="grid min-h-dvh place-items-center bg-parchment px-6 text-center text-ink">
-      <p className="font-display text-xl text-ink/60">
-        {phase} — screen not built yet.
-      </p>
-    </div>
+    <>
+      <div className="flex min-h-dvh flex-col bg-parchment text-ink">
+        <GameHUD />
+        <NominationScreen />
+        <VoteResults />
+        <PhaseStub />
+      </div>
+      <RoleReveal />
+      <VotingScreen />
+    </>
   );
 }
 
 export default function App() {
   return (
     <GameProvider>
-      <CurrentPhase />
+      <Game />
     </GameProvider>
   );
 }

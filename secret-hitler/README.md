@@ -18,11 +18,15 @@ for making sure only the right person ever sees the hidden information.
 | `src/components/InterstitialScreen.jsx` | The pass-the-device privacy gate |
 | `src/components/SetupScreen.jsx` | Roster, expansion toggle, deal |
 | `src/components/RoleReveal.jsx` | The first handoff: one card per player |
+| `src/components/GameHUD.jsx` | Persistent rail: boards, tracker, deck, roster |
+| `src/components/NominationScreen.jsx` | The President picks, in the open |
+| `src/components/VotingScreen.jsx` | The secret ballot, one player at a time |
+| `src/components/VoteResults.jsx` | The simultaneous reveal |
 | `src/App.jsx` | Phase router |
 | `tailwind.config.js` | 1930s palette and type scale |
 
-Not built yet: the board, nomination, ballot, legislative and power screens,
-and persistence. The reducer is complete enough to drive all of them.
+Not built yet: the legislative, executive-action and game-over screens, and
+persistence. The reducer is complete enough to drive all of them.
 
 ## Player counts
 
@@ -42,9 +46,12 @@ lets the limit yield in that case rather than stalling the game.
 SETUP ──START_GAME──▶ ROLE_REVEAL (one interstitial per player)
   │
   ▼
-NOMINATION ──NOMINATE_CHANCELLOR──▶ VOTING ──CAST_VOTE ×N──┬─ rejected ─▶ tracker+1 ─▶ NOMINATION
-  ▲                                                        │              (3 ⇒ chaos policy)
-  │                                                        └─ elected ──▶ LEGISLATIVE_PRESIDENT
+NOMINATION ──NOMINATE_CHANCELLOR──▶ VOTING ──CAST_VOTE ×N──▶ VOTE_REVEAL
+  ▲                                                               │ RESOLVE_ELECTION
+  │                                       ┌─ rejected ─▶ tracker+1 ┤   (3 ⇒ chaos policy)
+  │◀──────────────────────────────────────┘                       │
+  │                                                        elected │
+  │                                            LEGISLATIVE_PRESIDENT ◀┘
   │                                                                              │ PRESIDENT_DISCARD
   │                                                                              ▼
   │                                                                    LEGISLATIVE_CHANCELLOR
@@ -56,6 +63,33 @@ NOMINATION ──NOMINATE_CHANCELLOR──▶ VOTING ──CAST_VOTE ×N──�
 `GAME_OVER` is reachable from any policy enactment (a track completes), from a
 vote (Hitler elected Chancellor with 3+ fascist policies), and from an
 execution (Hitler is shot).
+
+## Actions
+
+Every action is `{ type, payload }`, and components never build one by hand —
+`useGameActions()` hands back the creators pre-bound to dispatch:
+
+```js
+actions.nominateChancellor(playerId);  // { type: 'NOMINATE_CHANCELLOR', payload: { chancellorId } }
+actions.castVote(VOTES.JA);            // { type: 'CAST_VOTE', payload: { vote } }
+actions.resolveElection();             // { type: 'RESOLVE_ELECTION' }
+```
+
+## The ballot loop
+
+The loop lives entirely in the reducer; `VotingScreen` renders whoever
+`state.handoff.toPlayerId` names and dispatches one `CAST_VOTE`.
+
+`election.ballotIndex` indexes the **alive** list, not the seat list. Corpses
+are skipped, cast no ballot, and are excluded from the majority — `CAST_VOTE`
+resolves the next voter as `alivePlayers(state)[ballotIndex + 1]`, and the alive
+set cannot change mid-ballot because executions only happen in
+EXECUTIVE_ACTION. A majority is `ja > alive / 2`, so an exact tie fails.
+
+When the last ballot lands the machine **stops** at `VOTE_REVEAL` with the tally
+on `election.result` and the overlay down. It does not resolve. `VoteResults`
+shows every ballot at once, and `RESOLVE_ELECTION` — the Continue button — is
+what seats the government, advances the tracker, or ends the game.
 
 ## Reading the state
 
@@ -146,11 +180,18 @@ runs out of legal candidates, and no handoff ever addresses a dead player.
 exactly the allies it should and nothing else, and no player is ever listed as
 their own ally.
 
-**UI** — SetupScreen and RoleReveal driven through jsdom: validation gates at
-four and twenty, add/rename/remove/toggle all dispatch, the breakdown tracks the
-toggle, and at every one of the seven reveals the covered screen contains the
-recipient's name and no other player's — the payload only enters the DOM after
-the hold completes.
+**Ballot loop** — with two players executed out of seven: ballots visit exactly
+the living in seat order, `ballotIndex` walks 0..4 over the alive list, the dead
+record no vote, and a vote dispatched after the loop closes is ignored. Majority
+boundaries checked at 5 and 6 alive, including the exact tie.
+
+**UI** — driven through jsdom end to end: setup validation at four and twenty,
+add/rename/remove/toggle, the seven role reveals, the HUD (slot counts, power
+labels on fascist 3/4/5 and communist 1/2/3, tracker, deck counters, President
+and Prev Pres / Prev Chan badges), nomination eligibility matching
+`eligibleChancellors` exactly, six ballots, and the reveal grid. At every
+handoff the overlay is full-screen and opaque and its subtree names only the
+recipient — the payload enters the DOM only after the hold completes.
 
 ## Wiring it up
 

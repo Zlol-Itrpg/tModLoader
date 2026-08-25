@@ -41,6 +41,7 @@ export const ACTIONS = {
   // Turn loop
   NOMINATE_CHANCELLOR: 'NOMINATE_CHANCELLOR',
   CAST_VOTE: 'CAST_VOTE',
+  RESOLVE_ELECTION: 'RESOLVE_ELECTION',
   PRESIDENT_DISCARD: 'PRESIDENT_DISCARD',
   CHANCELLOR_ENACT: 'CHANCELLOR_ENACT',
   REQUEST_VETO: 'REQUEST_VETO',
@@ -51,22 +52,29 @@ export const ACTIONS = {
 };
 
 export const actions = {
-  addPlayer: (name) => ({ type: ACTIONS.ADD_PLAYER, name }),
-  removePlayer: (playerId) => ({ type: ACTIONS.REMOVE_PLAYER, playerId }),
-  renamePlayer: (playerId, name) => ({ type: ACTIONS.RENAME_PLAYER, playerId, name }),
-  setExpansion: (communistsEnabled) => ({ type: ACTIONS.SET_EXPANSION, communistsEnabled }),
+  addPlayer: (name) => ({ type: ACTIONS.ADD_PLAYER, payload: { name } }),
+  removePlayer: (playerId) => ({ type: ACTIONS.REMOVE_PLAYER, payload: { playerId } }),
+  renamePlayer: (playerId, name) => ({ type: ACTIONS.RENAME_PLAYER, payload: { playerId, name } }),
+  setExpansion: (communistsEnabled) => ({
+    type: ACTIONS.SET_EXPANSION,
+    payload: { communistsEnabled },
+  }),
   startGame: () => ({ type: ACTIONS.START_GAME }),
 
   revealHandoff: () => ({ type: ACTIONS.REVEAL_HANDOFF }),
   continueHandoff: () => ({ type: ACTIONS.CONTINUE_HANDOFF }),
 
-  nominateChancellor: (playerId) => ({ type: ACTIONS.NOMINATE_CHANCELLOR, playerId }),
-  castVote: (vote) => ({ type: ACTIONS.CAST_VOTE, vote }),
-  presidentDiscard: (index) => ({ type: ACTIONS.PRESIDENT_DISCARD, index }),
-  chancellorEnact: (index) => ({ type: ACTIONS.CHANCELLOR_ENACT, index }),
+  nominateChancellor: (chancellorId) => ({
+    type: ACTIONS.NOMINATE_CHANCELLOR,
+    payload: { chancellorId },
+  }),
+  castVote: (vote) => ({ type: ACTIONS.CAST_VOTE, payload: { vote } }),
+  resolveElection: () => ({ type: ACTIONS.RESOLVE_ELECTION }),
+  presidentDiscard: (index) => ({ type: ACTIONS.PRESIDENT_DISCARD, payload: { index } }),
+  chancellorEnact: (index) => ({ type: ACTIONS.CHANCELLOR_ENACT, payload: { index } }),
   requestVeto: () => ({ type: ACTIONS.REQUEST_VETO }),
-  answerVeto: (accepted) => ({ type: ACTIONS.ANSWER_VETO, accepted }),
-  resolvePower: (targetId = null) => ({ type: ACTIONS.RESOLVE_POWER, targetId }),
+  answerVeto: (accepted) => ({ type: ACTIONS.ANSWER_VETO, payload: { accepted } }),
+  resolvePower: (targetId = null) => ({ type: ACTIONS.RESOLVE_POWER, payload: { targetId } }),
   resetGame: () => ({ type: ACTIONS.RESET_GAME }),
 };
 
@@ -258,24 +266,41 @@ function resolveChaos(state) {
 function failElection(state, reason) {
   const tracker = state.election.tracker + 1;
   const failed = log(
-    { ...state, election: { ...state.election, tracker, result: 'FAILED' } },
+    { ...state, election: { ...state.election, tracker } },
     `${reason} Election tracker: ${tracker}/${CHAOS_AT}.`,
   );
   return tracker >= CHAOS_AT ? resolveChaos(failed) : beginNomination(failed);
 }
 
-/** Tally the secret ballot once every living player has voted. */
-function resolveElection(state) {
+/**
+ * Count the ballots and stop.
+ *
+ * Secret Hitler reveals votes simultaneously, so the machine parks in
+ * VOTE_REVEAL with the tally on `election.result` and waits. The table reads
+ * the grid together and taps once; only then does RESOLVE_ELECTION run.
+ */
+function tallyElection(state) {
   const voters = alivePlayers(state);
   const ja = voters.filter((player) => state.election.votes[player.id] === VOTES.JA).length;
+  const nein = voters.length - ja;
   const passed = ja > voters.length / 2;
 
-  const tallied = log(
-    state,
-    `Vote: ${ja} Ja / ${voters.length - ja} Nein — ${passed ? 'the government is elected' : 'the government is rejected'}.`,
+  return log(
+    {
+      ...state,
+      phase: PHASES.VOTE_REVEAL,
+      handoff: null,
+      election: { ...state.election, result: { passed, ja, nein } },
+    },
+    `Vote: ${ja} Ja / ${nein} Nein — ${passed ? 'the government is elected' : 'the government is rejected'}.`,
   );
+}
 
-  if (!passed) return failElection(tallied, 'The government was rejected.');
+/** Act on the tally the table has now seen. */
+function resolveElection(state) {
+  if (!state.election.result.passed) {
+    return failElection(state, 'The government was rejected.');
+  }
 
   const chancellor = getPlayer(state, state.government.nomineeId);
 
@@ -284,18 +309,18 @@ function resolveElection(state) {
     chancellor.role === ROLES.HITLER &&
     state.boards[PARTIES.FASCIST].enacted >= HITLER_CHANCELLOR_DANGER_AT
   ) {
-    return endGame(tallied, PARTIES.FASCIST, WIN_REASONS.HITLER_ELECTED);
+    return endGame(state, PARTIES.FASCIST, WIN_REASONS.HITLER_ELECTED);
   }
 
   const elected = {
-    ...tallied,
+    ...state,
     phase: PHASES.LEGISLATIVE_PRESIDENT,
-    government: { ...tallied.government, chancellorId: chancellor.id, nomineeId: null },
+    government: { ...state.government, chancellorId: chancellor.id, nomineeId: null },
     lastElectedGovernment: {
-      presidentId: tallied.government.presidentId,
+      presidentId: state.government.presidentId,
       chancellorId: chancellor.id,
     },
-    election: { ...tallied.election, result: 'PASSED', tracker: 0 },
+    election: { ...state.election, tracker: 0 },
   };
 
   const { drawn, deck, discard } = drawPolicies(elected.deck, elected.discard, 3);
@@ -472,12 +497,14 @@ function continueRoleReveal(state) {
 /* -------------------------------------------------------------------------- */
 
 export function gameReducer(state, action) {
+  const payload = action.payload ?? {};
+
   switch (action.type) {
     /* ---- Setup --------------------------------------------------------- */
 
     case ACTIONS.ADD_PLAYER: {
       if (state.phase !== PHASES.SETUP || state.players.length >= MAX_PLAYERS) return state;
-      const name = action.name?.trim();
+      const name = payload.name?.trim();
       if (!name) return state;
       return {
         ...state,
@@ -489,19 +516,19 @@ export function gameReducer(state, action) {
       if (state.phase !== PHASES.SETUP) return state;
       // Reseat so ids stay dense and seat order keeps matching the array index.
       const remaining = state.players
-        .filter((player) => player.id !== action.playerId)
+        .filter((player) => player.id !== payload.playerId)
         .map((player, index) => ({ ...player, id: `p${index}`, seat: index }));
       return { ...state, players: remaining };
     }
 
     case ACTIONS.RENAME_PLAYER: {
       if (state.phase !== PHASES.SETUP) return state;
-      return updatePlayer(state, action.playerId, { name: action.name });
+      return updatePlayer(state, payload.playerId, { name: payload.name });
     }
 
     case ACTIONS.SET_EXPANSION: {
       if (state.phase !== PHASES.SETUP) return state;
-      return { ...state, config: { ...state.config, communistsEnabled: action.communistsEnabled } };
+      return { ...state, config: { ...state.config, communistsEnabled: payload.communistsEnabled } };
     }
 
     case ACTIONS.START_GAME:
@@ -531,16 +558,16 @@ export function gameReducer(state, action) {
 
     case ACTIONS.NOMINATE_CHANCELLOR: {
       if (state.phase !== PHASES.NOMINATION) return state;
-      if (!eligibleChancellors(state).some((player) => player.id === action.playerId)) return state;
+      if (!eligibleChancellors(state).some((player) => player.id === payload.chancellorId)) return state;
 
       const nominated = log(
         {
           ...state,
           phase: PHASES.VOTING,
-          government: { ...state.government, nomineeId: action.playerId },
+          government: { ...state.government, nomineeId: payload.chancellorId },
           election: { ...state.election, votes: {}, ballotIndex: 0, result: null },
         },
-        `${nameOf(state, state.government.presidentId)} nominates ${nameOf(state, action.playerId)} for Chancellor.`,
+        `${nameOf(state, state.government.presidentId)} nominates ${nameOf(state, payload.chancellorId)} for Chancellor.`,
       );
 
       return handOffTo(nominated, HANDOFF.VOTE, alivePlayers(nominated)[0].id);
@@ -559,7 +586,7 @@ export function gameReducer(state, action) {
         ...state,
         election: {
           ...state.election,
-          votes: { ...state.election.votes, [voterId]: action.vote },
+          votes: { ...state.election.votes, [voterId]: payload.vote },
           ballotIndex,
         },
       };
@@ -567,8 +594,12 @@ export function gameReducer(state, action) {
       const nextVoter = voters[ballotIndex];
       if (nextVoter) return handOffTo(recorded, HANDOFF.VOTE, nextVoter.id);
 
-      return resolveElection({ ...recorded, handoff: null });
+      return tallyElection({ ...recorded, handoff: null });
     }
+
+    case ACTIONS.RESOLVE_ELECTION:
+      if (state.phase !== PHASES.VOTE_REVEAL || !state.election.result) return state;
+      return resolveElection(state);
 
     /* ---- Legislative session ------------------------------------------- */
 
@@ -576,7 +607,7 @@ export function gameReducer(state, action) {
       if (state.phase !== PHASES.LEGISLATIVE_PRESIDENT || !state.handoff?.revealed) return state;
 
       const { drawn } = state.legislative;
-      const discarded = drawn[action.index];
+      const discarded = drawn[payload.index];
       if (!discarded) return state;
 
       const passed = log(
@@ -588,7 +619,7 @@ export function gameReducer(state, action) {
             ...state.legislative,
             drawn: [],
             discarded,
-            chancellorHand: drawn.filter((_, index) => index !== action.index),
+            chancellorHand: drawn.filter((_, index) => index !== payload.index),
           },
         },
         `${nameOf(state, state.government.presidentId)} passes two policies to ${nameOf(state, state.government.chancellorId)}.`,
@@ -601,12 +632,12 @@ export function gameReducer(state, action) {
       if (state.phase !== PHASES.LEGISLATIVE_CHANCELLOR || !state.handoff?.revealed) return state;
 
       const { chancellorHand } = state.legislative;
-      const enacted = chancellorHand[action.index];
+      const enacted = chancellorHand[payload.index];
       if (!enacted) return state;
 
       const spent = {
         ...state,
-        discard: [...state.discard, ...chancellorHand.filter((_, i) => i !== action.index)],
+        discard: [...state.discard, ...chancellorHand.filter((_, i) => i !== payload.index)],
         legislative: { drawn: [], chancellorHand: [], discarded: null, vetoRequested: false },
         handoff: null,
       };
@@ -628,7 +659,7 @@ export function gameReducer(state, action) {
     case ACTIONS.ANSWER_VETO: {
       if (!state.legislative.vetoRequested) return state;
 
-      if (!action.accepted) {
+      if (!payload.accepted) {
         const refused = log(
           { ...state, legislative: { ...state.legislative, vetoRequested: false } },
           `${nameOf(state, state.government.presidentId)} refuses the veto — a policy must be enacted.`,
@@ -658,12 +689,12 @@ export function gameReducer(state, action) {
 
       if (
         POWER_INFO[power].needsTarget &&
-        !eligiblePowerTargets(state).some((player) => player.id === action.targetId)
+        !eligiblePowerTargets(state).some((player) => player.id === payload.targetId)
       ) {
         return state;
       }
 
-      return applyPower(state, power, action.targetId);
+      return applyPower(state, power, payload.targetId);
     }
 
     /* ---- Lifecycle ------------------------------------------------------ */
