@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    /* The device gets passed around and tapped fast. Kill the double-tap zoom
+       delay without disabling pinch zoom, which people may genuinely need. */
+    touch-action: manipulation;
+    /* No pull-to-refresh mid-handoff. */
+    overscroll-behavior-y: contain;
+    background-color: theme('colors.parchment');
+  }
+
+  body {
+    @apply bg-parchment font-display text-ink antialiased;
+    /* iOS otherwise inflates text in ways that break the fixed overlays. */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* A held button should not select the label underneath it. */
+  button {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+}

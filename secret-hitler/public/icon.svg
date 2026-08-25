@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Secret Hitler XL">
+  <title>Secret Hitler XL</title>
+  <!-- A ballot going into a locked box: the whole game in one shape, and it
+       reads at 48px. Deliberately not fascist iconography — this sits on a
+       home screen next to someone's banking app. -->
+  <rect width="512" height="512" fill="#7f1d1d"/>
+
+  <!-- The ballot, tilted, half-swallowed by the slot. -->
+  <g transform="rotate(-14 256 168)">
+    <rect x="196" y="96" width="120" height="150" rx="6" fill="#e6dac0"/>
+    <rect x="216" y="126" width="80" height="14" rx="4" fill="#7f1d1d"/>
+    <rect x="216" y="156" width="56" height="10" rx="4" fill="#7f1d1d" opacity="0.55"/>
+    <rect x="216" y="180" width="68" height="10" rx="4" fill="#7f1d1d" opacity="0.55"/>
+  </g>
+
+  <!-- The box: solid, closed, with the slot cut out of the lid. -->
+  <rect x="96" y="236" width="320" height="52" rx="10" fill="#e6dac0"/>
+  <rect x="200" y="252" width="112" height="20" rx="8" fill="#7f1d1d"/>
+  <path d="M124 296h264l-22 116a16 16 0 0 1-16 13H162a16 16 0 0 1-16-13z" fill="#e6dac0"/>
+  <rect x="232" y="330" width="48" height="52" rx="10" fill="#7f1d1d"/>
+</svg>

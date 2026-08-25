@@ -4,6 +4,54 @@ A local, single-device version of Secret Hitler with the fan-made Communist
 (XL) expansion. One phone gets passed around the room; the app is responsible
 for making sure only the right person ever sees the hidden information.
 
+## Running it
+
+```
+npm install
+npm run dev      # dev server
+npm run build    # production build into dist/
+npm run preview  # serve dist/ over http://localhost:4173
+npm run icons    # re-render the icon PNGs from public/icon.svg
+```
+
+Vite + React + Tailwind 3. The service worker only exists in a production
+build, so install and offline behaviour must be checked against `preview`, not
+`dev`.
+
+## Installable and offline
+
+The app is a PWA: installed to a home screen it opens without browser chrome,
+locked to portrait, and plays with the radio off.
+
+| | |
+| --- | --- |
+| Name / short name | Secret Hitler XL / Secret Hitler |
+| Display | `standalone` — no URL bar to navigate away from mid-handoff |
+| Orientation | `portrait` — a rotation would reflow every fixed overlay |
+| Theme colour | `#7f1d1d` (status bar) |
+| Background colour | `#1c1917` (install splash) |
+
+Everything the app needs — HTML, JS, CSS, fonts, icons — is precached at
+install time, which in Workbox *is* cache-first: a precached URL is served from
+the cache and never hits the network. The app makes no requests of its own, so
+once the precache is populated there is nothing left to fail offline. Fonts are
+self-hosted via `@fontsource` for exactly this reason; a webfont from a CDN is
+one more thing that breaks on a phone with no signal. Latin subsets only, which
+takes the precache from 740 KiB to 444 KiB.
+
+The worker is registered in **prompt** mode, not `autoUpdate`. A new deploy
+downloads in the background and then waits: reloading the page mid-handoff would
+be worse than running a stale build for another ten minutes. `UpdatePrompt`
+shows a toast, and the table taps Refresh when the round ends.
+
+Icons are committed PNGs rendered from `public/icon.svg` by `npm run icons`, so
+a plain `npm install && npm run build` needs no image toolchain. Edit the SVG,
+re-run the script, commit the output.
+
+**Deploying under a subpath** (a GitHub Pages project site) needs `base` set in
+`vite.config.js` *and* `start_url`/`scope` changed to match, or the installed
+app launches to a 404 and the worker never controls the page.
+
 ## What is in this first drop
 
 | File | What it is |
@@ -34,6 +82,10 @@ for making sure only the right person ever sees the hidden information.
 | `src/components/GameOverScreen.jsx` | Winners, reason, every card face up |
 | `src/components/AbandonGameButton.jsx` | End a game in progress, behind a confirm |
 | `src/App.jsx` | Phase router |
+| `src/main.jsx` | Entry point: fonts, styles, service worker |
+| `src/components/UpdatePrompt.jsx` | "New version ready" toast |
+| `vite.config.js` | Build + PWA manifest and precache |
+| `scripts/generate-icons.mjs` | Renders the icon PNGs from the SVG |
 | `tailwind.config.js` | 1930s palette and type scale |
 
 The turn loop, both legislative halves, the veto exchange, all six powers and
@@ -344,8 +396,16 @@ joint-victory screen. At every handoff the overlay is full-screen and opaque and
 its subtree names only the recipient — the payload enters the DOM only after the
 hold completes.
 
-Suite totals: 600 fuzzed games, 24,480 role-reveals, and 471 assertions across
-ten files.
+**PWA** — the production build driven in Chromium at Pixel 8 size: manifest
+fields, the iOS home-screen meta tags, every icon served, and the worker
+registering and activating. Then the network is cut and the page reloaded — the
+app boots, fonts resolve from the cache, a cold navigation still reaches the app
+shell, and a full deal-and-reveal plays through with the game saving to
+localStorage. Browser-initiated favicon fetches abort offline because they never
+enter a worker client; the same URLs return 200 when fetched through it.
+
+Suite totals: 600 fuzzed games, 24,480 role-reveals, and 511 assertions across
+eleven files.
 
 ## Wiring it up
 
