@@ -3,6 +3,7 @@ import { useGame } from '../game/GameContext.jsx';
 import { MAX_PLAYERS, MIN_PLAYERS } from '../game/config.js';
 import { getRoleDistribution } from '../game/selectors.js';
 import { PARTIES } from '../game/constants.js';
+import AudioToggle from './AudioToggle.jsx';
 
 /**
  * The pre-game roster.
@@ -55,14 +56,20 @@ export default function SetupScreen() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-parchment text-ink">
-      <header className="shrink-0 border-b border-brass/40 px-5 pb-4 pt-[calc(env(safe-area-inset-top)+1.25rem)]">
-        <p className="font-stencil text-[0.6875rem] uppercase tracking-[0.32em] text-ink/50">
-          Pass-and-play
-        </p>
-        <h1 className="font-display text-3xl font-bold leading-tight">Secret Hitler</h1>
-        <p className="font-stencil text-xs uppercase tracking-[0.2em] text-fascist">
-          with the Communist expansion
-        </p>
+      <header className="flex shrink-0 items-start justify-between gap-3 border-b border-brass/40
+                         px-5 pb-4 pt-[calc(env(safe-area-inset-top)+1.25rem)]">
+        <div className="min-w-0">
+          <p className="font-stencil text-[0.6875rem] uppercase tracking-[0.32em] text-ink/50">
+            Pass-and-play
+          </p>
+          <h1 className="font-display text-3xl font-bold leading-tight">Secret Hitler</h1>
+          <p className="font-stencil text-xs uppercase tracking-[0.2em] text-fascist">
+            with the Communist expansion
+          </p>
+        </div>
+        {/* Also here, not just in the HUD: the interstitials cover the HUD, so
+            this is the only chance to silence the game before the first deal. */}
+        <AudioToggle />
       </header>
 
       <main className="min-h-0 flex-1 overflow-y-auto px-5 pb-6 pt-5">

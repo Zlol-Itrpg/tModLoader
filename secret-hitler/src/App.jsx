@@ -10,6 +10,7 @@ import LegislativeChancellor from './components/LegislativeChancellor.jsx';
 import VetoScreen from './components/VetoScreen.jsx';
 import ExecutiveActionScreen from './components/ExecutiveActionScreen.jsx';
 import GameOverScreen from './components/GameOverScreen.jsx';
+import GameAudio from './components/GameAudio.jsx';
 import { PHASES } from './game/constants.js';
 
 const BUILT = new Set([
@@ -69,6 +70,7 @@ export function Game() {
 export default function App() {
   return (
     <GameProvider>
+      <GameAudio />
       <Game />
     </GameProvider>
   );

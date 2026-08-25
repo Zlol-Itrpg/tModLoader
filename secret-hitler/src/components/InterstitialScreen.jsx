@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import haptics from '../utils/haptics.js';
 
 /**
  * The pass-and-play privacy gate.
@@ -65,6 +66,7 @@ export default function InterstitialScreen({
   }, []);
 
   const commitReveal = useCallback(() => {
+    haptics.light();
     if (isControlled) onReveal?.();
     else setInnerRevealed(true);
     setHoldProgress(0);
@@ -114,7 +116,7 @@ export default function InterstitialScreen({
       role="dialog"
       aria-modal="true"
       aria-label={revealed ? title : `${kicker} ${playerName}`}
-      className="fixed inset-0 z-50 flex flex-col bg-parchment text-ink
+      className="fixed inset-0 z-50 flex flex-col bg-parchment text-ink animate-curtain-in
                  [background-image:repeating-linear-gradient(0deg,rgba(20,18,16,.035)_0px,rgba(20,18,16,.035)_1px,transparent_1px,transparent_3px)]"
       style={{
         paddingTop: 'env(safe-area-inset-top)',
@@ -131,7 +133,9 @@ export default function InterstitialScreen({
             <h1 className="font-display text-2xl leading-tight">{title}</h1>
           </header>
 
-          <main className="min-h-0 flex-1 overflow-y-auto px-5 py-6">{children}</main>
+          <main className="perspective-card min-h-0 flex-1 overflow-y-auto px-5 py-6">
+            <div className="animate-flip-in preserve-3d">{children}</div>
+          </main>
 
           {onDone ? (
             <footer className="shrink-0 px-5 pb-5 pt-3">
@@ -150,7 +154,7 @@ export default function InterstitialScreen({
       ) : (
         /* ---- Stage one: the handoff ------------------------------------ */
         <>
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center">
+          <div className="flex min-h-0 flex-1 animate-fade-up flex-col items-center justify-center px-6 text-center">
             <p className="font-stencil text-xs uppercase tracking-[0.32em] text-ink/55">{kicker}</p>
 
             <h1

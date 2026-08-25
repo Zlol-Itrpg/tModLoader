@@ -81,6 +81,12 @@ app launches to a 404 and the worker never controls the page.
 | `src/components/RadicalisationReveal.jsx` | The target's half of Radicalisation |
 | `src/components/GameOverScreen.jsx` | Winners, reason, every card face up |
 | `src/components/AbandonGameButton.jsx` | End a game in progress, behind a confirm |
+| `src/components/GameAudio.jsx` | Fires sound and haptics off state transitions |
+| `src/components/AudioToggle.jsx` | The mute switch |
+| `src/components/VictoryFlourish.jsx` | One decorative treatment per victory |
+| `src/utils/audio.js` | Synthesised sound effects |
+| `src/utils/haptics.js` | Vibration, where the device has it |
+| `src/hooks/useReducedMotion.js` | The JS half of the motion preference |
 | `src/App.jsx` | Phase router |
 | `src/main.jsx` | Entry point: fonts, styles, service worker |
 | `src/components/UpdatePrompt.jsx` | "New version ready" toast |
@@ -231,6 +237,52 @@ write-back effect never runs:
 - **End game**, a deliberately quiet control in the HUD, behind an in-app
   confirmation. Not `window.confirm` — that is styled by the OS, blocks the main
   thread, and is suppressed outright in some mobile browsers.
+
+## Feel
+
+**Motion** is CSS keyframes in `tailwind.config.js`, not an animation library.
+For a 78 KiB-gzip offline bundle a runtime animation engine is a large addition
+to buy transitions this simple, and the reduced-motion story is better at the
+CSS layer: one media query in `index.css` neuters every animation in the app, so
+a new one cannot be added later that quietly ignores the preference. There is no
+wrapper to forget. `useReducedMotion()` exists for the rare case where JS has to
+make the same call.
+
+Cards flip on a real `perspective` + `rotateY`; the legislative hands and the
+vote grid stagger by index through a `--i` custom property; an enacted policy
+slams into its slot and shakes its track; the interstitials come in on a
+curtain.
+
+**Sound** is synthesised in `src/utils/audio.js` — oscillators, gain envelopes
+and a noise buffer, no files. That is not a purity exercise: samples would each
+need precaching and a cache-busting story, and `<audio>` on older phones stalls
+long enough before the first sample that the tap and the sound stop feeling
+connected. Oscillators start on the next audio frame.
+
+| Voice | What it is |
+| --- | --- |
+| `playPaperShuffle` | High-passed noise brush — a card drawn or picked |
+| `playStampThud` | 150 → 42 Hz sine punch plus a bandpassed contact click |
+| `playGavel` | Two wooden knocks, 130 ms apart |
+| `playHeartbeat` | Sub-bass lub-dub under role reveals and executions |
+| `playFanfare` | A chord sequence per outcome — major arpeggio for the Liberals, a low minor-second drone for the Fascists, minor-to-major for the Communists, both stacked for the joint win |
+
+**Haptics** in `src/utils/haptics.js`: 15 ms on taps, 40 on a vote, 100 on a
+policy or an execution, `[40, 60, 40]` on game over. `navigator.vibrate` is
+absent on iOS Safari and desktop and throws outside a gesture in some engines;
+all of that is a silent no-op.
+
+Cues fire from `GameAudio`, which watches state **transitions** rather than
+hanging off click handlers — so a chaos policy, which no button dispatches,
+still slams and thuds. Reopening a finished save is not a transition, so it does
+not replay the fanfare.
+
+The mute switch persists to `secret-hitler-muted` and sits in both the HUD and
+the setup header: the interstitials cover the HUD, so setup is the only place a
+new table can silence the game before the first reveal.
+
+Everything above is a no-op without `AudioContext` or `navigator.vibrate`, which
+is what keeps the headless suites green.
 
 ## Reading the state
 
@@ -396,6 +448,17 @@ joint-victory screen. At every handoff the overlay is full-screen and opaque and
 its subtree names only the recipient — the payload enters the DOM only after the
 hold completes.
 
+**Feel** — 50 headless checks on the synthesis itself, against a recording
+fake `AudioContext`: the shuffle is noise and not tone, the stamp drops in
+pitch, the gavel knocks twice, the heartbeat stays sub-bass, each fanfare plays
+as a sequence and the fascist one is pitched below the liberal one. Mute is
+honoured, persisted and broadcast. A constructor that throws, a failure
+mid-voice, a `vibrate` that throws, and a complete absence of `window` are all
+survived. Then 32 more in Chromium: the animation classes reach the DOM with
+real 3D perspective, a context is built on the first gesture, reduced motion
+neuters everything, each victory flourish renders, and the fanfare fires on a
+live transition but not on reopening a save.
+
 **PWA** — the production build driven in Chromium at Pixel 8 size: manifest
 fields, the iOS home-screen meta tags, every icon served, and the worker
 registering and activating. Then the network is cut and the page reloaded — the
@@ -404,8 +467,8 @@ shell, and a full deal-and-reveal plays through with the game saving to
 localStorage. Browser-initiated favicon fetches abort offline because they never
 enter a worker client; the same URLs return 200 when fetched through it.
 
-Suite totals: 600 fuzzed games, 24,480 role-reveals, and 511 assertions across
-eleven files.
+Suite totals: 600 fuzzed games, 24,480 role-reveals, and 594 assertions across
+thirteen files.
 
 ## Wiring it up
 

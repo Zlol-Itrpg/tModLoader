@@ -1,6 +1,7 @@
 import { useGame } from '../game/GameContext.jsx';
 import { PHASES, ROLES, WIN_REASONS } from '../game/constants.js';
 import { BOARDS } from '../game/config.js';
+import VictoryFlourish from './VictoryFlourish.jsx';
 
 /**
  * The reckoning: who won, why, and everybody's card face up.
@@ -31,13 +32,18 @@ export default function GameOverScreen() {
   const headline = winners.map((party) => BOARDS[party].label).join(' & ');
 
   return (
-    <div className="flex min-h-dvh flex-col bg-parchment px-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)]
+    <div className="relative flex min-h-dvh flex-col overflow-hidden bg-parchment px-5
+                    pb-[calc(env(safe-area-inset-bottom)+1.25rem)]
                     pt-[calc(env(safe-area-inset-top)+2rem)] text-ink">
-      <header className="text-center">
+      {/* The flourish is scoped to this banner, so it can never wash over the
+          roster below it. */}
+      <div className="relative -mx-5 overflow-hidden px-5 pb-7 pt-3">
+        <VictoryFlourish winners={winners} />
+        <header className="relative text-center">
         <p className="font-stencil text-[0.6875rem] uppercase tracking-[0.32em] text-ink/50">
           {isJoint ? 'A joint victory' : 'Victory'}
         </p>
-        <h1 className="mt-2 font-display text-[clamp(2.25rem,12vw,3.5rem)] font-bold uppercase leading-none">
+        <h1 className="mt-2 animate-stamp-in font-display text-[clamp(2.25rem,12vw,3.5rem)] font-bold uppercase leading-none">
           {headline}
         </h1>
         <p className="mt-3 font-display text-lg text-ink/75">{REASON_COPY[winReason]}</p>
@@ -47,9 +53,10 @@ export default function GameOverScreen() {
             and the Communists alike.
           </p>
         ) : null}
-      </header>
+        </header>
+      </div>
 
-      <section className="mt-6 min-h-0 flex-1 overflow-y-auto">
+      <section className="relative mt-5 min-h-0 flex-1 animate-fade-up overflow-y-auto [animation-delay:420ms]">
         <h2 className="font-stencil text-[0.625rem] uppercase tracking-[0.24em] text-ink/50">
           Every card, face up
         </h2>
@@ -79,7 +86,7 @@ export default function GameOverScreen() {
       <button
         type="button"
         onClick={() => actions.newGame()}
-        className="mt-5 h-16 w-full shrink-0 rounded-sm bg-ink font-stencil text-sm uppercase
+        className="relative mt-5 h-16 w-full shrink-0 rounded-sm bg-ink font-stencil text-sm uppercase
                    tracking-[0.24em] text-paper shadow-[0_3px_0_rgba(20,18,16,0.5)]
                    transition-transform active:translate-y-[3px] active:shadow-none"
       >

@@ -1,5 +1,7 @@
+import { useEffect, useRef, useState } from 'react';
 import { useGameState } from '../game/GameContext.jsx';
 import AbandonGameButton from './AbandonGameButton.jsx';
+import AudioToggle from './AudioToggle.jsx';
 import { BOARDS, CHAOS_AT, getBoardPowers } from '../game/config.js';
 import { PARTIES, POWERS, POWER_INFO } from '../game/constants.js';
 import { BOARD_ORDER } from '../game/initialState.js';
@@ -28,7 +30,7 @@ const TRACK = {
   [PARTIES.COMMUNIST]: { fill: 'bg-communist', edge: 'border-communist/40', text: 'text-communist' },
 };
 
-function PolicyTrack({ party, enacted, playerCount }) {
+function PolicyTrack({ party, enacted, playerCount, slammed }) {
   const board = BOARDS[party];
   const style = TRACK[party];
   const slots = Array.from({ length: board.slots }, (_, index) => index + 1);
@@ -39,7 +41,8 @@ function PolicyTrack({ party, enacted, playerCount }) {
   const nextPower = nextPowerSlot ? powers[nextPowerSlot] : null;
 
   return (
-    <section>
+    // The whole track takes the hit, not just the slot.
+    <section className={slammed ? 'animate-shake-x' : undefined}>
       <div className="flex items-baseline justify-between gap-2">
         <h3 className={`font-stencil text-[0.6875rem] uppercase tracking-[0.24em] ${style.text}`}>
           {board.label}
@@ -52,6 +55,7 @@ function PolicyTrack({ party, enacted, playerCount }) {
       <div className="mt-1 flex gap-1 overflow-x-auto pb-0.5">
         {slots.map((slot) => {
           const isFilled = slot <= enacted;
+          const isNewest = slammed && slot === enacted;
           const power = powers[slot];
           return (
             <div
@@ -59,7 +63,7 @@ function PolicyTrack({ party, enacted, playerCount }) {
               title={power ? `Slot ${slot}: ${POWER_INFO[power].label}` : `Slot ${slot}`}
               className={`grid h-16 w-12 shrink-0 place-items-center rounded-sm border-2 ${
                 isFilled ? `${style.fill} border-transparent` : `${style.edge} bg-paper/40`
-              }`}
+              } ${isNewest ? 'animate-slam' : ''}`}
             >
               {isFilled ? (
                 <span className="font-display text-2xl font-bold text-paper">{board.label[0]}</span>
@@ -98,6 +102,31 @@ function Badge({ children, className = '' }) {
   );
 }
 
+/**
+ * Which track just took a policy, if any.
+ *
+ * Watching the counters rather than the enacting action means chaos policies —
+ * which no button dispatches — slam too.
+ */
+function useSlammedTrack(boards) {
+  const [slammed, setSlammed] = useState(null);
+  const previous = useRef(boards);
+
+  useEffect(() => {
+    const before = previous.current;
+    previous.current = boards;
+
+    const moved = Object.keys(boards).find((party) => boards[party].enacted > before[party].enacted);
+    if (!moved) return undefined;
+
+    setSlammed(moved);
+    const timer = setTimeout(() => setSlammed(null), 700);
+    return () => clearTimeout(timer);
+  }, [boards]);
+
+  return slammed;
+}
+
 export default function GameHUD() {
   const state = useGameState();
   const { boards, deck, discard, election, government, lastElectedGovernment, config } = state;
@@ -105,6 +134,7 @@ export default function GameHUD() {
   const tracks = BOARD_ORDER.filter(
     (party) => party !== PARTIES.COMMUNIST || config.communistsEnabled,
   );
+  const slammed = useSlammedTrack(boards);
   const alive = state.players.filter((player) => player.isAlive);
   const dead = state.players.filter((player) => !player.isAlive);
 
@@ -114,7 +144,10 @@ export default function GameHUD() {
         <p className="font-stencil text-[0.5625rem] uppercase tracking-[0.28em] text-ink/40">
           Secret Hitler XL
         </p>
-        <AbandonGameButton />
+        <span className="flex shrink-0 items-center gap-1.5">
+          <AudioToggle />
+          <AbandonGameButton />
+        </span>
       </div>
 
       {/* ---- The three boards ------------------------------------------- */}
@@ -125,6 +158,7 @@ export default function GameHUD() {
             party={party}
             enacted={boards[party].enacted}
             playerCount={config.playerCount}
+            slammed={slammed === party}
           />
         ))}
       </div>

@@ -1,4 +1,5 @@
 import { BOARDS } from '../game/config.js';
+import haptics from '../utils/haptics.js';
 
 /**
  * Select-then-confirm target list, shared by every targeted power.
@@ -22,7 +23,10 @@ export default function TargetPicker({ targets, selectedId, onSelect, prompt, no
             <button
               type="button"
               aria-pressed={player.id === selectedId}
-              onClick={() => onSelect(player.id)}
+              onClick={() => {
+                haptics.light();
+                onSelect(player.id);
+              }}
               className={`flex h-14 w-full flex-col items-center justify-center rounded-sm border-2 px-2
                           transition-transform active:translate-y-[1px]
                           ${player.id === selectedId

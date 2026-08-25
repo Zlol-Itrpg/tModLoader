@@ -53,13 +53,15 @@ export default function LegislativePresident() {
         The other two go to {chancellor?.name}
       </p>
 
-      <div className="mt-5 flex gap-2">
-        {state.legislative.cards.map((card) => (
+      <div className="perspective-card stagger mt-5 flex gap-2 [--stagger:90ms]">
+        {state.legislative.cards.map((card, index) => (
           <PolicyCard
             key={card.id}
             party={card.party}
             selected={card.id === selectedId}
             onSelect={() => setSelectedId(card.id)}
+            className="animate-flip-in"
+            style={{ '--i': index }}
           />
         ))}
       </div>

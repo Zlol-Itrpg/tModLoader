@@ -26,7 +26,7 @@ export default function VoteResults() {
           {president?.name} &amp; {nominee?.name}
         </p>
         <h2
-          className={`font-display text-3xl font-bold leading-tight ${
+          className={`animate-stamp-in font-display text-3xl font-bold leading-tight ${
             passed ? 'text-liberal' : 'text-communist'
           }`}
         >
@@ -38,13 +38,16 @@ export default function VoteResults() {
         </p>
       </header>
 
-      <ul className="mt-4 grid grid-cols-2 gap-1.5">
-        {voters.map((player) => {
+      {/* Every ballot turns at once, fanned out by a beat each — the table
+          reads the shape of the vote before it reads the names. */}
+      <ul className="perspective-card stagger mt-4 grid grid-cols-2 gap-1.5 [--stagger:50ms]">
+        {voters.map((player, index) => {
           const votedJa = state.election.votes[player.id] === VOTES.JA;
           return (
             <li
               key={player.id}
-              className={`flex items-center justify-between gap-2 rounded-sm border-2 px-2.5 py-2 ${
+              style={{ '--i': index }}
+              className={`flex animate-flip-in items-center justify-between gap-2 rounded-sm border-2 px-2.5 py-2 ${
                 votedJa ? 'border-transparent bg-gold text-ink' : 'border-transparent bg-communist text-paper'
               }`}
             >

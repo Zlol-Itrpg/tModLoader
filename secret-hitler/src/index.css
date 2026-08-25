@@ -24,3 +24,35 @@
     user-select: none;
   }
 }
+
+@layer utilities {
+  /* Tailwind 3 has no 3D utilities of its own. */
+  .perspective-card { perspective: 900px; }
+  .preserve-3d { transform-style: preserve-3d; }
+  .backface-hidden { backface-visibility: hidden; }
+
+  /* Stagger helper: set --i on each child and they cascade. */
+  .stagger > * {
+    animation-delay: calc(var(--stagger, 50ms) * var(--i, 0));
+  }
+}
+
+/*
+ * One switch for the whole app.
+ *
+ * Doing this at the CSS layer rather than per-component means no animation can
+ * be added later that quietly ignores the preference — there is no wrapper to
+ * forget. Animations are neutered rather than removed so anything using an
+ * animation's end state still lands on it.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

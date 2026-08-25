@@ -31,7 +31,9 @@ export default defineConfig({
         // would reflow every fixed overlay.
         orientation: 'portrait',
         theme_color: '#7f1d1d',
-        background_color: '#1c1917',
+        // Matches the app's parchment, so the install splash does not flash
+        // dark before the first paint.
+        background_color: '#e6dac0',
         start_url: '/',
         scope: '/',
         categories: ['games'],
