@@ -1,0 +1,63 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A new push supersedes the run already in flight for the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: state machine & UI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The reducer fuzzer, the jsdom UI suites, and the audio/lifecycle checks.
+      # No browser needed: everything here runs headless.
+      - name: Run test suites
+        run: npm test
+
+      # A broken build is a failing test as far as this repo is concerned.
+      - name: Production build
+        run: npm run build
+
+  e2e:
+    name: PWA & browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Only worth the browser download once the fast suites are green.
+    needs: unit
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Builds, serves over http (service workers will not register on file://),
+      # then drives the real thing: install metadata, offline play, animation,
+      # audio wiring and touch-target sizes.
+      - name: Run browser suites
+        run: npm run test:e2e
