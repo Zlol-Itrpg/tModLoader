@@ -62,22 +62,29 @@ again.
 
 ### Deploy your own copy
 
-The build is static files. Any host works; these two need no configuration.
+The build is static files — any host works, and these two need no
+configuration. Both read private repositories once you authorise their GitHub
+app, so this works whether or not the repository is public. If it *is* public
+and not yours, fork it first and import the fork.
 
 **Vercel**
 
-1. Fork this repository.
-2. Go to [vercel.com/new](https://vercel.com/new) and import your fork.
-3. Vercel detects Vite on its own. Click **Deploy**.
+1. Go to [vercel.com/new](https://vercel.com/new) and import this repository.
+2. Vercel detects Vite on its own. Click **Deploy**.
 
 **Netlify**
 
-1. Fork this repository.
-2. Go to [app.netlify.com/start](https://app.netlify.com/start) and pick your fork.
-3. Build command `npm run build`, publish directory `dist`. Click **Deploy**.
+1. Go to [app.netlify.com/start](https://app.netlify.com/start) and pick this
+   repository.
+2. Build command `npm run build`, publish directory `dist`. Click **Deploy**.
 
 Either gives you an `https://…` link. HTTPS matters: service workers refuse to
 register without it, and without the service worker there is no offline mode.
+
+> A private repository does not make the deployment private. The URL either
+> host gives you is reachable by anyone who has it. That is usually what you
+> want — the people at the table need to open it — but it is worth knowing
+> before you paste the link anywhere public.
 
 ### Install it on the phone that will be passed around
 
